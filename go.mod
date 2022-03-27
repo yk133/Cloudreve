@@ -25,7 +25,7 @@ require (
 	github.com/juju/ratelimit v1.0.1
 	github.com/mattn/go-colorable v0.1.4 // indirect
 	github.com/mojocn/base64Captcha v0.0.0-20190801020520-752b1cd608b2
-	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/pquerna/otp v1.2.0
 	github.com/qiniu/api.v7/v7 v7.4.0
