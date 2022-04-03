@@ -28,3 +28,6 @@ version.lock
 conf/conf.ini
 /statik/
 .vscode/
+Cloudreve
+assets/
+assets
