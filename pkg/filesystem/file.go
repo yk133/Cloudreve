@@ -64,6 +64,11 @@ func (fs *FileSystem) AddFile(ctx context.Context, parent *model.Folder, file fs
 		UploadSessionID:    uploadInfo.UploadSessionID,
 	}
 
+	newFile.MD5, err = generateFileMD5(ctx, uploadInfo.SavePath)
+	if err != nil {
+		util.Log().Error("generateFileMD5 failed:", err)
+	}
+
 	if fs.Policy.IsThumbExist(uploadInfo.FileName) {
 		newFile.PicInfo = "1,1"
 	}
