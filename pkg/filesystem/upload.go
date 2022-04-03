@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"time"
@@ -84,6 +85,8 @@ func (fs *FileSystem) Upload(ctx context.Context, file *fsctx.FileStream) (err e
 			fs.User.Nick,
 		)
 	}
+	fmt.Println("save path ", file.SavePath)
+
 	return nil
 }
 

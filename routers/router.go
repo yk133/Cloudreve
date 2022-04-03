@@ -587,7 +587,11 @@ func InitMasterRouter() *gin.Engine {
 				directory.PUT("", controllers.CreateDirectory)
 				// 列出目录下内容
 				directory.GET("*path", controllers.ListDirectory)
+
 			}
+			directoryTool := auth.Group("directory_tool")
+			// 列出目录下内容hash
+			directoryTool.GET("*path", controllers.ListDirectoryTool)
 
 			// 对象，文件和目录的抽象
 			object := auth.Group("object")

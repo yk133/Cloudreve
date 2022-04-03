@@ -12,6 +12,7 @@ type Response struct {
 	Data  interface{} `json:"data,omitempty"`
 	Msg   string      `json:"msg"`
 	Error string      `json:"error,omitempty"`
+	DD    map[string]interface{}
 }
 
 // NewResponseWithGobData 返回Data字段使用gob编码的Response

@@ -2,6 +2,8 @@ package filesystem
 
 import (
 	"context"
+	"crypto/md5"
+	"fmt"
 	model "github.com/cloudreve/Cloudreve/v3/models"
 	"github.com/cloudreve/Cloudreve/v3/pkg/cache"
 	"github.com/cloudreve/Cloudreve/v3/pkg/cluster"
@@ -9,7 +11,9 @@ import (
 	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/fsctx"
 	"github.com/cloudreve/Cloudreve/v3/pkg/serializer"
 	"github.com/cloudreve/Cloudreve/v3/pkg/util"
+	"io"
 	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -222,7 +226,6 @@ func GenericAfterUpload(ctx context.Context, fs *FileSystem, fileHeader fsctx.Fi
 		if file.UploadSessionID != nil {
 			return ErrFileUploadSessionExisted
 		}
-
 		return ErrFileExisted
 	}
 
@@ -234,6 +237,29 @@ func GenericAfterUpload(ctx context.Context, fs *FileSystem, fileHeader fsctx.Fi
 	fileHeader.SetModel(file)
 
 	return nil
+}
+
+func generateFileMD5(ctx context.Context, filename string) (md5Code string, err error) {
+	if filename == "" {
+		return "", fmt.Errorf("filename is empty")
+	}
+	f, err := os.Open(filename)
+	if nil != err {
+		util.Log().Error("open File failed:", err)
+		return "", err
+	}
+	defer f.Close()
+
+	md5Handle := md5.New()
+	_, err = io.Copy(md5Handle, f)
+	if nil != err {
+		util.Log().Error("io Copy failed:", err)
+		return "", err
+	}
+	md := md5Handle.Sum(nil)
+
+	md5str := fmt.Sprintf("%x", md)
+	return md5str, nil
 }
 
 // HookGenerateThumb 生成缩略图

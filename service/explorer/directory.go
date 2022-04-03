@@ -2,6 +2,7 @@ package explorer
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem"
 	"github.com/cloudreve/Cloudreve/v3/pkg/serializer"
@@ -40,6 +41,50 @@ func (service *DirectoryService) ListDirectory(c *gin.Context) serializer.Respon
 	return serializer.Response{
 		Code: 0,
 		Data: serializer.BuildObjectList(parentID, objects, fs.Policy),
+	}
+}
+
+// ListDirectoryTool 列出目录内容+新增加
+func (service *DirectoryService) ListDirectoryTool(c *gin.Context) serializer.Response {
+	// 创建文件系统
+	fs, err := filesystem.NewFileSystemFromContext(c)
+	if err != nil {
+		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+	}
+	defer fs.Recycle()
+
+	//fmt.Printf("fs : %+v \n", fs)
+	//fmt.Printf("\nfs user: %+v \n", fs.User)
+	f, _ := fs.User.Root()
+	childFiles, _ := f.GetChildFiles()
+	childFolders, _ := f.GetChildFolder()
+	fmt.Printf("\nchildFiles %+v\n", childFiles)
+	fmt.Printf("\nchildFolders %+v\n", childFolders)
+	dd := make(map[string]interface{})
+	dd["childFiles"] = childFiles
+	dd["childFolders"] = childFolders
+
+	//fmt.Printf("fs Policy: %+v \n", fs.Policy)
+
+	// 上下文
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 获取子项目
+	objects, err := fs.List(ctx, service.Path, nil)
+	if err != nil {
+		return serializer.Err(serializer.CodeNotSet, err.Error(), err)
+	}
+
+	var parentID uint
+	if len(fs.DirTarget) > 0 {
+		parentID = fs.DirTarget[0].ID
+	}
+
+	return serializer.Response{
+		Code: 0,
+		Data: serializer.BuildObjectList(parentID, objects, fs.Policy),
+		DD:   dd,
 	}
 }
 

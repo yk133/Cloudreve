@@ -26,3 +26,14 @@ func ListDirectory(c *gin.Context) {
 		c.JSON(200, ErrorResponse(err))
 	}
 }
+
+// ListDirectoryTool 列出目录下内容ext
+func ListDirectoryTool(c *gin.Context) {
+	var service explorer.DirectoryService
+	if err := c.ShouldBindUri(&service); err == nil {
+		res := service.ListDirectoryTool(c)
+		c.JSON(200, res)
+	} else {
+		c.JSON(200, ErrorResponse(err))
+	}
+}

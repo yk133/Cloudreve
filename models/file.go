@@ -24,6 +24,7 @@ type File struct {
 	PolicyID        uint
 	UploadSessionID *string `gorm:"index:session_id;unique_index:session_only_one"`
 	Metadata        string  `gorm:"type:text"`
+	MD5             string  `gorm:"type:text"`
 
 	// 关联模型
 	Policy Policy `gorm:"PRELOAD:false,association_autoupdate:false"`
