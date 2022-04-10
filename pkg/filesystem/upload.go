@@ -60,6 +60,18 @@ func (fs *FileSystem) Upload(ctx context.Context, file *fsctx.FileStream) (err e
 			fs.Trigger(ctx, "AfterUploadFailed", file)
 			return err
 		}
+		gMD5, err := generateFileMD5(ctx, file.SavePath)
+		if err != nil {
+			util.Log().Error("generateFileMD5 failed:", err)
+		}
+		f := file.Model.(*model.File)
+		f.MD5 = gMD5
+		fmt.Println("MD5 ", gMD5)
+
+		err = f.UpdateMD5(gMD5)
+		if err != nil {
+			util.Log().Error("save md5 failed:", err)
+		}
 	}
 
 	// 上传完成后的钩子

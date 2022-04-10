@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"time"
 
@@ -297,6 +298,22 @@ func (file *File) UpdateSize(value uint64) error {
 	}
 
 	file.Size = value
+	return tx.Commit().Error
+}
+
+// UpdateMD5 MD5 update TODO: 全局锁
+func (file *File) UpdateMD5(md5 string) error {
+	if len(md5) <= 0 {
+		return fmt.Errorf("md5 is empty")
+	}
+
+	tx := DB.Begin()
+	if res := tx.Model(&file).
+		Update("md5", md5); res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+
 	return tx.Commit().Error
 }
 

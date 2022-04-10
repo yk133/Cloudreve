@@ -42,6 +42,7 @@ type Object struct {
 	Date          time.Time `json:"date"`
 	Key           string    `json:"key,omitempty"`
 	SourceEnabled bool      `json:"source_enabled"`
+	MD5           string    `json:"md5,omitempty"`
 }
 
 // PolicySummary 用于前端组件使用的存储策略概况

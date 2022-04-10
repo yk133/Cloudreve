@@ -31,3 +31,5 @@ conf/conf.ini
 Cloudreve
 assets/
 assets
+vendor/
+vendor

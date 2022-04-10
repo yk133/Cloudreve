@@ -55,7 +55,11 @@ func (service *DirectoryService) ListDirectoryTool(c *gin.Context) serializer.Re
 
 	//fmt.Printf("fs : %+v \n", fs)
 	//fmt.Printf("\nfs user: %+v \n", fs.User)
+
 	f, _ := fs.User.Root()
+	fmt.Println(service.Path)
+	f, _ = f.GetChild("test")
+
 	childFiles, _ := f.GetChildFiles()
 	childFolders, _ := f.GetChildFolder()
 	fmt.Printf("\nchildFiles %+v\n", childFiles)

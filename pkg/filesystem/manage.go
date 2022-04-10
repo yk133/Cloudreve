@@ -363,6 +363,7 @@ func (fs *FileSystem) listObjects(ctx context.Context, parent string, files []mo
 				Type:          "file",
 				Date:          file.CreatedAt,
 				SourceEnabled: file.GetPolicy().IsOriginLinkEnable,
+				MD5:           file.MD5,
 			}
 			if shareKey != "" {
 				newFile.Key = shareKey
