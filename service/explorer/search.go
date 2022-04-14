@@ -18,6 +18,7 @@ type ItemSearchService struct {
 	Keywords string `uri:"keywords" binding:"required"`
 }
 
+<<<<<<< HEAD
 type OtherSearchFileReq struct {
 	Type string   `json:"type"`
 	MD5  []string `json:"md_5"`
@@ -50,12 +51,24 @@ func (s *OtherSearchFileReq) Search(c *gin.Context, req *OtherSearchFileReq) ser
 		return serializer.ParamErr(msg, nil)
 	}
 	// 创建文件系统
+=======
+// SearchOptReq ext_search
+type SearchOptReq struct {
+	Type string   `json:"type"`
+	MD5  []string `json:"md5"`
+}
+
+// Search 执行搜索
+func ExtSearch(c *gin.Context, req *SearchOptReq) serializer.Response {
+	// fs
+>>>>>>> ff
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
 		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
 	}
 	defer fs.Recycle()
 
+<<<<<<< HEAD
 	switch s.Type {
 	case "md5":
 		f := model.File{}
@@ -78,6 +91,15 @@ func (s *OtherSearchFileReq) Search(c *gin.Context, req *OtherSearchFileReq) ser
 		}
 	default:
 		return serializer.ParamErr("未知搜索类型", nil)
+=======
+	switch req.Type {
+	case "md5":
+		f := model.File{}
+		f.GetName()
+
+	default:
+		return serializer.ParamErr("unknown type", nil)
+>>>>>>> ff
 	}
 
 	return serializer.Response{}
