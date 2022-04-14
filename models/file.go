@@ -317,6 +317,7 @@ func (file *File) UpdateMD5(md5 string) error {
 	return tx.Commit().Error
 }
 
+<<<<<<< HEAD
 // GetFilesByMD5  搜索文件, UID为0表示忽略用户，只根据文件ID检索
 func (file *File) GetFilesByMD5(uid uint, md5s []string) ([]*File, error) {
 	var (
@@ -330,6 +331,22 @@ func (file *File) GetFilesByMD5(uid uint, md5s []string) ([]*File, error) {
 	result = result.Where("md5 = ?", md5s).Find(&files)
 
 	return files, result.Error
+=======
+// SearchByMD5   Search By MD5
+func (file *File) SearchByMD5(userId uint, md5 []string) error {
+	if len(md5) <= 0 {
+		return fmt.Errorf("input md5 is empty")
+	}
+
+	tx := DB
+	if res := tx.Model(&file).
+		Where("user_id = ? and md5 in ?", userId, md5); res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+
+	return tx.Commit().Error
+>>>>>>> ff
 }
 
 // UpdateSourceName 更新文件的源文件名
