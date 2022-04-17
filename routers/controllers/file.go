@@ -404,3 +404,16 @@ func CreateFile(c *gin.Context) {
 		c.JSON(200, ErrorResponse(err))
 	}
 }
+
+// OtherSearchFile 搜索文件
+func OtherSearchFile(c *gin.Context) {
+	var req explorer.OtherSearchFileReq
+	if err := c.ShouldBind(&req); err == nil {
+
+		res := req.Search(c, &req)
+		c.JSON(200, res)
+
+	} else {
+		c.JSON(200, ErrorResponse(err))
+	}
+}

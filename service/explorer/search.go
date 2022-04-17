@@ -2,6 +2,7 @@ package explorer
 
 import (
 	"context"
+	"github.com/cloudreve/Cloudreve/v3/pkg/util"
 	"strings"
 
 	model "github.com/cloudreve/Cloudreve/v3/models"
@@ -15,6 +16,71 @@ import (
 type ItemSearchService struct {
 	Type     string `uri:"type" binding:"required"`
 	Keywords string `uri:"keywords" binding:"required"`
+}
+
+type OtherSearchFileReq struct {
+	Type string   `json:"type"`
+	MD5  []string `json:"md_5"`
+}
+
+func (f *OtherSearchFileReq) Validate() (bool, string) {
+	if len(f.Type) <= 0 {
+		return false, "type is empty"
+	}
+	if len(f.MD5) <= 0 {
+		return false, "MD5 is empty"
+	}
+
+	return true, ""
+}
+
+type OtherSearchFileResult struct {
+	Name       string `json:"name"`
+	SourcePath string `json:"source_path"`
+	Size       uint64 `json:"size"`
+	PolicyId   uint   `json:"policy_id"`
+	MD5        string `json:"md5"`
+}
+
+// Search 执行搜索
+func (s *OtherSearchFileReq) Search(c *gin.Context, req *OtherSearchFileReq) serializer.Response {
+
+	if ok, msg := req.Validate(); !ok {
+		util.Log().Warning("OtherSearchFileReq validate fail: %v", msg)
+		return serializer.ParamErr(msg, nil)
+	}
+	// 创建文件系统
+	fs, err := filesystem.NewFileSystemFromContext(c)
+	if err != nil {
+		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+	}
+	defer fs.Recycle()
+
+	switch s.Type {
+	case "md5":
+		f := model.File{}
+		getFiles, err := f.GetFilesByMD5(fs.User.ID, req.MD5)
+		if err != nil {
+			return serializer.Err(serializer.CodeDBError, err.Error(), err)
+		}
+		var res []*OtherSearchFileResult
+		for _, v := range getFiles {
+			res = append(res, &OtherSearchFileResult{
+				Name:       v.Name,
+				SourcePath: v.SourceName,
+				Size:       v.Size,
+				PolicyId:   v.PolicyID,
+				MD5:        v.MD5,
+			})
+		}
+		return serializer.Response{
+			Data: res,
+		}
+	default:
+		return serializer.ParamErr("未知搜索类型", nil)
+	}
+
+	return serializer.Response{}
 }
 
 // Search 执行搜索

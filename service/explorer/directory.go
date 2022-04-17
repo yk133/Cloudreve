@@ -88,7 +88,6 @@ func (service *DirectoryService) ListDirectoryTool(c *gin.Context) serializer.Re
 	return serializer.Response{
 		Code: 0,
 		Data: serializer.BuildObjectList(parentID, objects, fs.Policy),
-		DD:   dd,
 	}
 }
 

@@ -317,6 +317,21 @@ func (file *File) UpdateMD5(md5 string) error {
 	return tx.Commit().Error
 }
 
+// GetFilesByMD5  搜索文件, UID为0表示忽略用户，只根据文件ID检索
+func (file *File) GetFilesByMD5(uid uint, md5s []string) ([]*File, error) {
+	var (
+		files  []*File
+		result = DB
+	)
+
+	if uid != 0 {
+		result = result.Where("user_id = ?", uid)
+	}
+	result = result.Where("md5 = ?", md5s).Find(&files)
+
+	return files, result.Error
+}
+
 // UpdateSourceName 更新文件的源文件名
 func (file *File) UpdateSourceName(value string) error {
 	return DB.Model(&file).Set("gorm:association_autoupdate", false).Update("source_name", value).Error
