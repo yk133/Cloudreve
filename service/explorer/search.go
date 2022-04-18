@@ -20,7 +20,7 @@ type ItemSearchService struct {
 
 type OtherSearchFileReq struct {
 	Type string   `json:"type"`
-	MD5  []string `json:"md_5"`
+	MD5  []string `json:"md5"`
 }
 
 func (f *OtherSearchFileReq) Validate() (bool, string) {
