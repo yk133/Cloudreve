@@ -394,16 +394,17 @@ func SearchFile(c *gin.Context) {
 	}
 }
 
-// ExtSearchFile 额外搜索
-func ExtSearchFile(c *gin.Context) {
-	var req explorer.SearchOptReq
-	if err := c.ShouldBind(&req); err == nil {
-		res := service.ExtSearch(c)
-		c.JSON(200, res)
-	} else {
-		c.JSON(200, ErrorResponse(err))
-	}
-}
+//
+//// ExtSearchFile 额外搜索
+//func ExtSearchFile(c *gin.Context) {
+//	var req explorer.SearchOptReq
+//	if err := c.ShouldBind(&req); err == nil {
+//		res := service.ExtSearch(c)
+//		c.JSON(200, res)
+//	} else {
+//		c.JSON(200, ErrorResponse(err))
+//	}
+//}
 
 // CreateFile 创建空白文件
 func CreateFile(c *gin.Context) {
@@ -419,8 +420,8 @@ func CreateFile(c *gin.Context) {
 // OtherSearchFile 搜索文件
 func OtherSearchFile(c *gin.Context) {
 	var req explorer.OtherSearchFileReq
-	if err := c.ShouldBind(&req); err == nil {
-
+	if err := c.ShouldBindJSON(&req); err == nil {
+		fmt.Printf("req %+v\n", req)
 		res := req.Search(c, &req)
 		c.JSON(200, res)
 

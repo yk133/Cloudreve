@@ -561,13 +561,9 @@ func InitMasterRouter() *gin.Engine {
 				file.POST("decompress", controllers.Decompress)
 				// 创建文件解压缩任务
 				file.GET("search/:type/:keywords", controllers.SearchFile)
-<<<<<<< HEAD
-				// md5检索文件是否存在
-				file.GET("md5_search", controllers.OtherSearchFile)
-=======
-				// 批量搜索文件md5
-				file.GET("search/:type/:keywords", controllers.ExtSearchFile)
->>>>>>> ff
+
+				file.POST("md5_search", controllers.OtherSearchFile)
+
 			}
 
 			// 离线下载任务
