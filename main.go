@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/gin-gonic/gin"
 
 	"github.com/cloudreve/Cloudreve/v3/bootstrap"
 	"github.com/cloudreve/Cloudreve/v3/pkg/conf"
@@ -36,7 +37,9 @@ func main() {
 		return
 	}
 
+	gin.SetMode(gin.DebugMode)
 	api := routers.InitRouter()
+	gin.SetMode(gin.DebugMode)
 
 	// 如果启用了SSL
 	if conf.SSLConfig.CertPath != "" {
