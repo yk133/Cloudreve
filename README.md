@@ -1,3 +1,16 @@
+
+## 增加新功能
+#### 1 上传文件时files表中新增md5 
+#### 2 支持通过md5搜索文件，这样文件就可以支持自动上传文件
+
+## 适配的安卓移动端可以关注：
+可自动新建目录并上传文件  
+https://github.com/yk133/CloudreveApp  
+  
+    
+  
+  
+  
 <h1 align="center">
   <br>
   <a href="https://cloudreve.org/" alt="logo" ><img src="https://raw.githubusercontent.com/cloudreve/frontend/master/public/static/img/logo192.png" width="150"/></a>
