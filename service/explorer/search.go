@@ -80,7 +80,6 @@ func (s *OtherSearchFileReq) Search(c *gin.Context, req *OtherSearchFileReq) ser
 	default:
 		return serializer.ParamErr("未知搜索类型", nil)
 	}
-
 }
 
 // Search 执行搜索
