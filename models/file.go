@@ -327,10 +327,21 @@ func (file *File) GetFilesByMD5(uid uint, md5s []string) ([]*File, error) {
 	if uid != 0 {
 		result = result.Where("user_id = ?", uid)
 	}
-	result = result.Where("md5 in (?)", md5s).Find(&files)
-
+	for i, last := 0, 0; i < len(md5s); i += 20 {
+		data := md5s[last:min(i, len(md5s))]
+		res := []*File{}
+		result = result.Where("md5 in (?)", data).Find(&res)
+		last = i
+		files = append(files, res...)
+	}
 	return files, result.Error
+}
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 //// SearchByMD5   Search By MD5
