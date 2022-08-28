@@ -330,7 +330,7 @@ func (file *File) GetFilesByMD5(uid uint, md5s []string) ([]*File, error) {
 	for i, last := 0, 0; i < len(md5s); i += 20 {
 		data := md5s[last:min(i, len(md5s))]
 		res := []*File{}
-		result = result.Where("md5 in (?)", data).Find(&res)
+		result = result.New().Where("md5 in (?)", data).Find(&res)
 		last = i
 		files = append(files, res...)
 	}
