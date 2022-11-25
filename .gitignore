@@ -33,3 +33,5 @@ assets/
 assets
 vendor/
 vendor
+.github/
+.github
