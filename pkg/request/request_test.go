@@ -82,6 +82,8 @@ func TestHTTPClient_Request(t *testing.T) {
 			WithTimeout(time.Duration(1)*time.Microsecond),
 			WithCredential(auth.HMACAuth{SecretKey: []byte("123")}, 10),
 			WithContext(context.Background()),
+			WithoutHeader([]string{"s s", "s s"}),
+			WithMasterMeta(),
 		)
 		asserts.Error(resp.Err)
 		asserts.Nil(resp.Response)
@@ -235,4 +237,42 @@ func TestBlackHole(t *testing.T) {
 	a.NotPanics(func() {
 		BlackHole(strings.NewReader("TestBlackHole"))
 	})
+}
+
+func TestHTTPClient_TPSLimit(t *testing.T) {
+	a := assert.New(t)
+	client := NewClient()
+
+	finished := make(chan struct{})
+	go func() {
+		client.Request(
+			"POST",
+			"/test",
+			strings.NewReader(""),
+			WithTPSLimit("TestHTTPClient_TPSLimit", 1, 1),
+		)
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(10 * time.Second):
+		a.Fail("Request should be finished instantly.")
+	}
+
+	finished = make(chan struct{})
+	go func() {
+		client.Request(
+			"POST",
+			"/test",
+			strings.NewReader(""),
+			WithTPSLimit("TestHTTPClient_TPSLimit", 1, 1),
+		)
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		a.Fail("Request should be finished in 1 second.")
+	}
+
 }

@@ -1,10 +1,15 @@
 package filesystem
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/cloudreve/Cloudreve/v3/pkg/util"
+	testMock "github.com/stretchr/testify/mock"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,11 +17,8 @@ import (
 	model "github.com/cloudreve/Cloudreve/v3/models"
 	"github.com/cloudreve/Cloudreve/v3/pkg/cache"
 	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/fsctx"
-	"github.com/cloudreve/Cloudreve/v3/pkg/request"
-	"github.com/cloudreve/Cloudreve/v3/pkg/util"
 	"github.com/jinzhu/gorm"
 	"github.com/stretchr/testify/assert"
-	testMock "github.com/stretchr/testify/mock"
 )
 
 func TestFileSystem_Compress(t *testing.T) {
@@ -58,12 +60,11 @@ func TestFileSystem_Compress(t *testing.T) {
 			)
 		// 查找上传策略
 		asserts.NoError(cache.Set("policy_1", model.Policy{Type: "local"}, -1))
+		w := &bytes.Buffer{}
 
-		zipFile, err := fs.Compress(ctx, []uint{1}, []uint{1}, true)
+		err := fs.Compress(ctx, w, []uint{1}, []uint{1}, true)
 		asserts.NoError(err)
-		asserts.NotEmpty(zipFile)
-		asserts.Contains(zipFile, "archive_")
-		asserts.Contains(zipFile, "tests")
+		asserts.NotEmpty(w.Len())
 	}
 
 	// 上下文取消
@@ -84,9 +85,10 @@ func TestFileSystem_Compress(t *testing.T) {
 			)
 		asserts.NoError(cache.Set("setting_temp_path", "tests", -1))
 
-		zipFile, err := fs.Compress(ctx, []uint{1}, []uint{1}, true)
+		w := &bytes.Buffer{}
+		err := fs.Compress(ctx, w, []uint{1}, []uint{1}, true)
 		asserts.Error(err)
-		asserts.Empty(zipFile)
+		asserts.NotEmpty(w.Len())
 	}
 
 	// 限制父目录
@@ -108,10 +110,11 @@ func TestFileSystem_Compress(t *testing.T) {
 			)
 		asserts.NoError(cache.Set("setting_temp_path", "tests", -1))
 
-		zipFile, err := fs.Compress(ctx, []uint{1}, []uint{1}, true)
+		w := &bytes.Buffer{}
+		err := fs.Compress(ctx, w, []uint{1}, []uint{1}, true)
 		asserts.Error(err)
 		asserts.Equal(ErrObjectNotExist, err)
-		asserts.Empty(zipFile)
+		asserts.Empty(w.Len())
 	}
 
 }
@@ -146,12 +149,24 @@ func (m MockRSC) Close() error {
 	return nil
 }
 
+var basepath string
+
+func init() {
+	_, currentFile, _, _ := runtime.Caller(0)
+	basepath = filepath.Dir(currentFile)
+}
+
+func Path(rel string) string {
+	return filepath.Join(basepath, rel)
+}
+
 func TestFileSystem_Decompress(t *testing.T) {
 	asserts := assert.New(t)
 	ctx := context.Background()
 	fs := FileSystem{
 		User: &model.User{Model: gorm.Model{ID: 1}},
 	}
+	os.RemoveAll(util.RelativePath("tests/decompress"))
 
 	// 压缩文件不存在
 	{
@@ -161,7 +176,7 @@ func TestFileSystem_Decompress(t *testing.T) {
 		// 查找压缩文件，未找到
 		mock.ExpectQuery("SELECT(.+)files(.+)").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "name"}))
-		err := fs.Decompress(ctx, "/1.zip", "/")
+		err := fs.Decompress(ctx, "/1.zip", "/", "")
 		asserts.NoError(mock.ExpectationsWereMet())
 		asserts.Error(err)
 	}
@@ -171,9 +186,9 @@ func TestFileSystem_Decompress(t *testing.T) {
 		fs.FileTarget = []model.File{{SourceName: "1.zip", Policy: model.Policy{Type: "mock"}}}
 		fs.FileTarget[0].Policy.ID = 1
 		testHandler := new(FileHeaderMock)
-		testHandler.On("Get", testMock.Anything, "1.zip").Return(request.NopRSCloser{}, errors.New("error"))
+		testHandler.On("Get", testMock.Anything, "1.zip").Return(MockRSC{}, errors.New("error"))
 		fs.Handler = testHandler
-		err := fs.Decompress(ctx, "/1.zip", "/")
+		err := fs.Decompress(ctx, "/1.zip", "/", "")
 		asserts.NoError(mock.ExpectationsWereMet())
 		asserts.Error(err)
 		asserts.EqualError(err, "error")
@@ -185,9 +200,9 @@ func TestFileSystem_Decompress(t *testing.T) {
 		fs.FileTarget = []model.File{{SourceName: "1.zip", Policy: model.Policy{Type: "mock"}}}
 		fs.FileTarget[0].Policy.ID = 1
 		testHandler := new(FileHeaderMock)
-		testHandler.On("Get", testMock.Anything, "1.zip").Return(request.NopRSCloser{}, nil)
+		testHandler.On("Get", testMock.Anything, "1.zip").Return(MockRSC{}, nil)
 		fs.Handler = testHandler
-		err := fs.Decompress(ctx, "/1.zip", "/")
+		err := fs.Decompress(ctx, "/1.zip", "/", "")
 		asserts.NoError(mock.ExpectationsWereMet())
 		asserts.Error(err)
 	}
@@ -200,13 +215,13 @@ func TestFileSystem_Decompress(t *testing.T) {
 		testHandler := new(FileHeaderMock)
 		testHandler.On("Get", testMock.Anything, "1.zip").Return(MockNopRSC("1"), nil)
 		fs.Handler = testHandler
-		err := fs.Decompress(ctx, "/1.zip", "/")
+		err := fs.Decompress(ctx, "/1.zip", "/", "")
 		asserts.NoError(mock.ExpectationsWereMet())
 		asserts.Error(err)
-		asserts.EqualError(err, "read error")
+		asserts.Contains(err.Error(), "read error")
 	}
 
-	// 无效zip文件
+	// 无法重设上传策略
 	{
 		cache.Set("setting_temp_path", "tests", 0)
 		fs.FileTarget = []model.File{{SourceName: "1.zip", Policy: model.Policy{Type: "mock"}}}
@@ -214,22 +229,7 @@ func TestFileSystem_Decompress(t *testing.T) {
 		testHandler := new(FileHeaderMock)
 		testHandler.On("Get", testMock.Anything, "1.zip").Return(MockRSC{rs: strings.NewReader("read")}, nil)
 		fs.Handler = testHandler
-		err := fs.Decompress(ctx, "/1.zip", "/")
-		asserts.NoError(mock.ExpectationsWereMet())
-		asserts.Error(err)
-		asserts.EqualError(err, "zip: not a valid zip file")
-	}
-
-	// 无法重设上传策略
-	{
-		zipFile, _ := os.Open(util.RelativePath("filesystem/tests/test.zip"))
-		fs.FileTarget = []model.File{{SourceName: "1.zip", Policy: model.Policy{Type: "mock"}}}
-		fs.FileTarget[0].Policy.ID = 1
-		testHandler := new(FileHeaderMock)
-		testHandler.On("Get", testMock.Anything, "1.zip").Return(zipFile, nil)
-		fs.Handler = testHandler
-		err := fs.Decompress(ctx, "/1.zip", "/")
-		zipFile.Close()
+		err := fs.Decompress(ctx, "/1.zip", "/", "")
 		asserts.NoError(mock.ExpectationsWereMet())
 		asserts.Error(err)
 		asserts.True(util.IsEmpty(util.RelativePath("tests/decompress")))
@@ -238,7 +238,7 @@ func TestFileSystem_Decompress(t *testing.T) {
 	// 无法上传，容量不足
 	{
 		cache.Set("setting_max_parallel_transfer", "1", 0)
-		zipFile, _ := os.Open(util.RelativePath("filesystem/tests/test.zip"))
+		zipFile, _ := os.Open(Path("tests/test.zip"))
 		fs.FileTarget = []model.File{{SourceName: "1.zip", Policy: model.Policy{Type: "mock"}}}
 		fs.FileTarget[0].Policy.ID = 1
 		fs.User.Policy.Type = "mock"
@@ -246,7 +246,7 @@ func TestFileSystem_Decompress(t *testing.T) {
 		testHandler.On("Get", testMock.Anything, "1.zip").Return(zipFile, nil)
 		fs.Handler = testHandler
 
-		fs.Decompress(ctx, "/1.zip", "/")
+		fs.Decompress(ctx, "/1.zip", "/", "")
 
 		zipFile.Close()
 

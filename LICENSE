@@ -672,3 +672,22 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <http://www.gnu.org/philosophy/why-not-lgpl.html>.
+
+
+CONFLICT (modify/delete): docker-bootstrap.sh deleted in origin/master and modified in HEAD.  Version HEAD of docker-bootstrap.sh left in tree.
+Auto-merging main.go
+CONFLICT (content): Merge conflict in main.go
+Auto-merging models/file.go
+CONFLICT (modify/delete): pkg/filesystem/driver/oss/callback_test.go deleted in origin/master and modified in HEAD.  Version HEAD of pkg/filesystem/driver/oss/callback_test.go left in tree.
+CONFLICT (modify/delete): pkg/filesystem/driver/oss/handler_test.go deleted in origin/master and modified in HEAD.  Version HEAD of pkg/filesystem/driver/oss/handler_test.go left in tree.
+CONFLICT (modify/delete): pkg/filesystem/fsctx/taskinfo/taskinfo.go deleted in origin/master and modified in HEAD.  Version HEAD of pkg/filesystem/fsctx/taskinfo/taskinfo.go left in tree.
+Auto-merging pkg/filesystem/hooks.go
+Auto-merging pkg/filesystem/manage.go
+CONFLICT (content): Merge conflict in pkg/filesystem/manage.go
+Auto-merging pkg/filesystem/upload.go
+CONFLICT (content): Merge conflict in pkg/filesystem/upload.go
+Auto-merging pkg/serializer/explorer.go
+Auto-merging pkg/serializer/response.go
+CONFLICT (modify/delete): pkg/serializer/upload_test.go deleted in origin/master and modified in HEAD.  Version HEAD of pkg/serializer/upload_test.go left in tree.
+Auto-merging routers/controllers/file.go
+CONFLICT (modify/delete): routers/file_router_test.go deleted in origin/master and modified in HEAD.  Version HEAD of routers/file_router_test.go left in tree.

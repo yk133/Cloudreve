@@ -57,6 +57,10 @@ const (
 )
 
 func NewDriver(policy *model.Policy) (*Driver, error) {
+	if policy.OptionsSerialized.ChunkSize == 0 {
+		policy.OptionsSerialized.ChunkSize = 25 << 20 // 25 MB
+	}
+
 	driver := &Driver{
 		Policy:     policy,
 		HTTPClient: request.NewClient(),
@@ -87,7 +91,7 @@ func (handler *Driver) CORS() error {
 // InitOSSClient 初始化OSS鉴权客户端
 func (handler *Driver) InitOSSClient(forceUsePublicEndpoint bool) error {
 	if handler.Policy == nil {
-		return errors.New("存储策略为空")
+		return errors.New("empty policy")
 	}
 
 	// 决定是否使用内网 Endpoint
@@ -229,7 +233,7 @@ func (handler *Driver) Put(ctx context.Context, file fsctx.FileHeader) error {
 	fileInfo := file.Info()
 
 	// 凭证有效期
-	credentialTTL := model.GetIntSetting("upload_credential_timeout", 3600)
+	credentialTTL := model.GetIntSetting("upload_session_timeout", 3600)
 
 	// 是否允许覆盖
 	overwrite := fileInfo.Mode&fsctx.Overwrite == fsctx.Overwrite
@@ -282,7 +286,7 @@ func (handler *Driver) Delete(ctx context.Context, files []string) ([]string, er
 	// 统计未删除的文件
 	failed := util.SliceDifference(files, delRes.DeletedObjects)
 	if len(failed) > 0 {
-		return failed, errors.New("删除失败")
+		return failed, errors.New("failed to delete")
 	}
 
 	return []string{}, nil
@@ -300,7 +304,7 @@ func (handler *Driver) Thumb(ctx context.Context, path string) (*response.Conten
 		ok        = false
 	)
 	if thumbSize, ok = ctx.Value(fsctx.ThumbSizeCtx).([2]uint); !ok {
-		return nil, errors.New("无法获取缩略图尺寸设置")
+		return nil, errors.New("failed to get thumbnail size")
 	}
 
 	thumbParam := fmt.Sprintf("image/resize,m_lfit,h_%d,w_%d", thumbSize[1], thumbSize[0])
@@ -404,6 +408,10 @@ func (handler *Driver) signSourceURL(ctx context.Context, path string, ttl int64
 
 // Token 获取上传策略和认证Token
 func (handler *Driver) Token(ctx context.Context, ttl int64, uploadSession *serializer.UploadSession, file fsctx.FileHeader) (*serializer.UploadCredential, error) {
+	// 初始化客户端
+	if err := handler.InitOSSClient(true); err != nil {
+		return nil, err
+	}
 
 	// 生成回调地址
 	siteURL := model.GetSiteURL()
@@ -457,6 +465,7 @@ func (handler *Driver) Token(ctx context.Context, ttl int64, uploadSession *seri
 
 	// 签名完成分片上传的URL
 	completeURL, err := handler.bucket.SignURL(fileInfo.SavePath, oss.HTTPPost, ttl,
+		oss.ContentType("application/octet-stream"),
 		oss.UploadID(imur.UploadID),
 		oss.Expires(time.Now().Add(time.Duration(ttl)*time.Second)),
 		oss.CompleteAll("yes"),

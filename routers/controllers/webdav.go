@@ -7,6 +7,7 @@ import (
 	"github.com/cloudreve/Cloudreve/v3/pkg/webdav"
 	"github.com/cloudreve/Cloudreve/v3/service/setting"
 	"github.com/gin-gonic/gin"
+	"sync"
 )
 
 var handler *webdav.Handler
@@ -15,6 +16,7 @@ func init() {
 	handler = &webdav.Handler{
 		Prefix:     "/dav",
 		LockSystem: make(map[uint]webdav.LockSystem),
+		Mutex:      &sync.Mutex{},
 	}
 }
 
@@ -22,7 +24,7 @@ func init() {
 func ServeWebDAV(c *gin.Context) {
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		util.Log().Warning("无法为WebDAV初始化文件系统，%s", err)
+		util.Log().Warning("Failed to initialize filesystem for WebDAV，%s", err)
 		return
 	}
 

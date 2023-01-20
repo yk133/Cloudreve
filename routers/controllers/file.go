@@ -3,10 +3,10 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem"
 	"net/http"
 
 	model "github.com/cloudreve/Cloudreve/v3/models"
-	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem"
 	"github.com/cloudreve/Cloudreve/v3/pkg/request"
 	"github.com/cloudreve/Cloudreve/v3/pkg/serializer"
 	"github.com/cloudreve/Cloudreve/v3/service/explorer"
@@ -18,12 +18,9 @@ func DownloadArchive(c *gin.Context) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var service explorer.DownloadService
+	var service explorer.ArchiveService
 	if err := c.ShouldBindUri(&service); err == nil {
-		res := service.DownloadArchived(ctx, c)
-		if res.Code != 0 {
-			c.JSON(200, res)
-		}
+		service.DownloadArchived(ctx, c)
 	} else {
 		c.JSON(200, ErrorResponse(err))
 	}
@@ -82,8 +79,8 @@ func AnonymousGetContent(c *gin.Context) {
 	}
 }
 
-// AnonymousPermLink 文件签名后的永久链接
-func AnonymousPermLink(c *gin.Context) {
+// AnonymousPermLink Deprecated 文件签名后的永久链接
+func AnonymousPermLinkDeprecated(c *gin.Context) {
 	// 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -105,39 +102,51 @@ func AnonymousPermLink(c *gin.Context) {
 	}
 }
 
-// GetSource 获取文件的外链地址
+// AnonymousPermLink 文件中转后的永久直链接
+func AnonymousPermLink(c *gin.Context) {
+	// 创建上下文
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sourceLinkRaw, ok := c.Get("source_link")
+	if !ok {
+		c.JSON(200, serializer.Err(serializer.CodeFileNotFound, "", nil))
+		return
+	}
+
+	sourceLink := sourceLinkRaw.(*model.SourceLink)
+
+	service := &explorer.FileAnonymousGetService{
+		ID:   sourceLink.FileID,
+		Name: sourceLink.File.Name,
+	}
+
+	res := service.Source(ctx, c)
+	// 是否需要重定向
+	if res.Code == -302 {
+		c.Redirect(302, res.Data.(string))
+		return
+	}
+
+	// 是否有错误发生
+	if res.Code != 0 {
+		c.JSON(200, res)
+	}
+
+}
+
 func GetSource(c *gin.Context) {
 	// 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fs, err := filesystem.NewFileSystemFromContext(c)
-	if err != nil {
-		c.JSON(200, serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err))
-		return
+	var service explorer.ItemIDService
+	if err := c.ShouldBindJSON(&service); err == nil {
+		res := service.Sources(ctx, c)
+		c.JSON(200, res)
+	} else {
+		c.JSON(200, ErrorResponse(err))
 	}
-	defer fs.Recycle()
-
-	// 获取文件ID
-	fileID, ok := c.Get("object_id")
-	if !ok {
-		c.JSON(200, serializer.ParamErr("文件不存在", err))
-		return
-	}
-
-	sourceURL, err := fs.GetSource(ctx, fileID.(uint))
-	if err != nil {
-		c.JSON(200, serializer.Err(serializer.CodeNotSet, err.Error(), err))
-		return
-	}
-
-	c.JSON(200, serializer.Response{
-		Code: 0,
-		Data: struct {
-			URL string `json:"url"`
-		}{URL: sourceURL},
-	})
-
 }
 
 // Thumb 获取文件缩略图
@@ -156,14 +165,14 @@ func Thumb(c *gin.Context) {
 	// 获取文件ID
 	fileID, ok := c.Get("object_id")
 	if !ok {
-		c.JSON(200, serializer.ParamErr("文件不存在", err))
+		c.JSON(200, serializer.Err(serializer.CodeFileNotFound, "", err))
 		return
 	}
 
 	// 获取缩略图
 	resp, err := fs.GetThumb(ctx, fileID.(uint))
 	if err != nil {
-		c.JSON(200, serializer.Err(serializer.CodeNotSet, "无法获取缩略图", err))
+		c.JSON(200, serializer.Err(serializer.CodeNotSet, "Failed to get thumbnail", err))
 		return
 	}
 
@@ -189,7 +198,7 @@ func Preview(c *gin.Context) {
 		res := service.PreviewContent(ctx, c, false)
 		// 是否需要重定向
 		if res.Code == -301 {
-			c.Redirect(301, res.Data.(string))
+			c.Redirect(302, res.Data.(string))
 			return
 		}
 		// 是否有错误发生
@@ -386,12 +395,18 @@ func GetUploadSession(c *gin.Context) {
 // SearchFile 搜索文件
 func SearchFile(c *gin.Context) {
 	var service explorer.ItemSearchService
-	if err := c.ShouldBindUri(&service); err == nil {
-		res := service.Search(c)
-		c.JSON(200, res)
-	} else {
+	if err := c.ShouldBindUri(&service); err != nil {
 		c.JSON(200, ErrorResponse(err))
+		return
 	}
+
+	if err := c.ShouldBindQuery(&service); err != nil {
+		c.JSON(200, ErrorResponse(err))
+		return
+	}
+
+	res := service.Search(c)
+	c.JSON(200, res)
 }
 
 //

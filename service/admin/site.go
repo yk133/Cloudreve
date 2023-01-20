@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/gob"
 	"time"
 
 	model "github.com/cloudreve/Cloudreve/v3/models"
@@ -9,6 +10,11 @@ import (
 	"github.com/cloudreve/Cloudreve/v3/pkg/email"
 	"github.com/cloudreve/Cloudreve/v3/pkg/serializer"
 )
+
+func init() {
+	gob.Register(map[string]interface{}{})
+	gob.Register(map[string]string{})
+}
 
 // NoParamService 无需参数的服务
 type NoParamService struct {
@@ -37,8 +43,8 @@ type MailTestService struct {
 
 // Send 发送测试邮件
 func (service *MailTestService) Send() serializer.Response {
-	if err := email.Send(service.Email, "Cloudreve发信测试", "这是一封测试邮件，用于测试 Cloudreve 发信设置。"); err != nil {
-		return serializer.Err(serializer.CodeInternalSetting, "发信失败, "+err.Error(), nil)
+	if err := email.Send(service.Email, "Cloudreve Email delivery test", "This is a test Email, to test Cloudreve Email delivery settings"); err != nil {
+		return serializer.Err(serializer.CodeFailedSendEmail, err.Error(), nil)
 	}
 	return serializer.Response{}
 }
@@ -52,15 +58,21 @@ func (service *BatchSettingGet) Get() serializer.Response {
 // Change 批量更改站点设定
 func (service *BatchSettingChangeService) Change() serializer.Response {
 	cacheClean := make([]string, 0, len(service.Options))
+	tx := model.DB.Begin()
 
 	for _, setting := range service.Options {
 
-		if err := model.DB.Model(&model.Setting{}).Where("name = ?", setting.Key).Update("value", setting.Value).Error; err != nil {
+		if err := tx.Model(&model.Setting{}).Where("name = ?", setting.Key).Update("value", setting.Value).Error; err != nil {
 			cache.Deletes(cacheClean, "setting_")
-			return serializer.DBErr("设置 "+setting.Key+" 更新失败", err)
+			tx.Rollback()
+			return serializer.Err(serializer.CodeUpdateSetting, "Setting "+setting.Key+" failed to update", err)
 		}
 
 		cacheClean = append(cacheClean, setting.Key)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return serializer.DBErr("Failed to update setting", err)
 	}
 
 	cache.Deletes(cacheClean, "setting_")
@@ -70,6 +82,21 @@ func (service *BatchSettingChangeService) Change() serializer.Response {
 
 // Summary 获取站点统计概况
 func (service *NoParamService) Summary() serializer.Response {
+	// 获取版本信息
+	versions := map[string]string{
+		"backend": conf.BackendVersion,
+		"db":      conf.RequiredDBVersion,
+		"commit":  conf.LastCommit,
+		"is_pro":  conf.IsPro,
+	}
+
+	if res, ok := cache.Get("admin_summary"); ok {
+		resMap := res.(map[string]interface{})
+		resMap["version"] = versions
+		resMap["siteURL"] = model.GetSettingByName("siteURL")
+		return serializer.Response{Data: resMap}
+	}
+
 	// 统计每日概况
 	total := 12
 	files := make([]int, total)
@@ -98,26 +125,21 @@ func (service *NoParamService) Summary() serializer.Response {
 	model.DB.Model(&model.Share{}).Where("password = ?", "").Count(&publicShareTotal)
 	model.DB.Model(&model.Share{}).Where("password <> ?", "").Count(&secretShareTotal)
 
-	// 获取版本信息
-	versions := map[string]string{
-		"backend": conf.BackendVersion,
-		"db":      conf.RequiredDBVersion,
-		"commit":  conf.LastCommit,
-		"is_pro":  conf.IsPro,
+	resp := map[string]interface{}{
+		"date":             date,
+		"files":            files,
+		"users":            users,
+		"shares":           shares,
+		"version":          versions,
+		"siteURL":          model.GetSettingByName("siteURL"),
+		"fileTotal":        fileTotal,
+		"userTotal":        userTotal,
+		"publicShareTotal": publicShareTotal,
+		"secretShareTotal": secretShareTotal,
 	}
 
+	cache.Set("admin_summary", resp, 86400)
 	return serializer.Response{
-		Data: map[string]interface{}{
-			"date":             date,
-			"files":            files,
-			"users":            users,
-			"shares":           shares,
-			"version":          versions,
-			"siteURL":          model.GetSettingByName("siteURL"),
-			"fileTotal":        fileTotal,
-			"userTotal":        userTotal,
-			"publicShareTotal": publicShareTotal,
-			"secretShareTotal": secretShareTotal,
-		},
+		Data: resp,
 	}
 }

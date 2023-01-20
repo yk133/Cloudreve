@@ -58,8 +58,6 @@ const (
 	CodeConflict = 409
 	// CodeUploadFailed 上传出错
 	CodeUploadFailed = 40002
-	// CodeCredentialInvalid 凭证无效
-	CodeCredentialInvalid = 40001
 	// CodeCreateFolderFailed 目录创建失败
 	CodeCreateFolderFailed = 40003
 	// CodeObjectExist 对象已存在
@@ -75,11 +73,125 @@ const (
 	// CodeMasterNotFound 主机节点未注册
 	CodeMasterNotFound = 40009
 	// CodeUploadSessionExpired 上传会话已过期
-	CodeUploadSessionExpired = 400011
+	CodeUploadSessionExpired = 40011
 	// CodeInvalidChunkIndex 无效的分片序号
-	CodeInvalidChunkIndex = 400012
+	CodeInvalidChunkIndex = 40012
 	// CodeInvalidContentLength 无效的正文长度
-	CodeInvalidContentLength = 400013
+	CodeInvalidContentLength = 40013
+	// CodeBatchSourceSize 超出批量获取外链限制
+	CodeBatchSourceSize = 40014
+	// CodeBatchAria2Size 超出最大 Aria2 任务数量限制
+	CodeBatchAria2Size = 40015
+	// CodeParentNotExist 父目录不存在
+	CodeParentNotExist = 40016
+	// CodeUserBaned 用户不活跃
+	CodeUserBaned = 40017
+	// CodeUserNotActivated 用户不活跃
+	CodeUserNotActivated = 40018
+	// CodeFeatureNotEnabled 此功能未开启
+	CodeFeatureNotEnabled = 40019
+	// CodeCredentialInvalid 凭证无效
+	CodeCredentialInvalid = 40020
+	// CodeUserNotFound 用户不存在
+	CodeUserNotFound = 40021
+	// Code2FACodeErr 二步验证代码错误
+	Code2FACodeErr = 40022
+	// CodeLoginSessionNotExist 登录会话不存在
+	CodeLoginSessionNotExist = 40023
+	// CodeInitializeAuthn 无法初始化 WebAuthn
+	CodeInitializeAuthn = 40024
+	// CodeWebAuthnCredentialError WebAuthn 凭证无效
+	CodeWebAuthnCredentialError = 40025
+	// CodeCaptchaError 验证码错误
+	CodeCaptchaError = 40026
+	// CodeCaptchaRefreshNeeded 验证码需要刷新
+	CodeCaptchaRefreshNeeded = 40027
+	// CodeFailedSendEmail 邮件发送失败
+	CodeFailedSendEmail = 40028
+	// CodeInvalidTempLink 临时链接无效
+	CodeInvalidTempLink = 40029
+	// CodeTempLinkExpired 临时链接过期
+	CodeTempLinkExpired = 40030
+	// CodeEmailExisted 邮箱已被使用
+	CodeEmailExisted = 40032
+	// CodeEmailSent 邮箱已重新发送
+	CodeEmailSent = 40033
+	// CodeUserCannotActivate 用户无法激活
+	CodeUserCannotActivate = 40034
+	// 存储策略不存在
+	CodePolicyNotExist = 40035
+	// 无法删除默认存储策略
+	CodeDeleteDefaultPolicy = 40036
+	// 存储策略下还有文件
+	CodePolicyUsedByFiles = 40037
+	// 存储策略绑定了用户组
+	CodePolicyUsedByGroups = 40038
+	// 用户组不存在
+	CodeGroupNotFound = 40039
+	// 对系统用户组执行非法操作
+	CodeInvalidActionOnSystemGroup = 40040
+	// 用户组正在被使用
+	CodeGroupUsedByUser = 40041
+	// 为初始用户更改用户组
+	CodeChangeGroupForDefaultUser = 40042
+	// 对系统用户执行非法操作
+	CodeInvalidActionOnDefaultUser = 40043
+	// 文件不存在
+	CodeFileNotFound = 40044
+	// 列取文件失败
+	CodeListFilesError = 40045
+	// 对系统节点进行非法操作
+	CodeInvalidActionOnSystemNode = 40046
+	// 创建文件系统出错
+	CodeCreateFSError = 40047
+	// 创建任务出错
+	CodeCreateTaskError = 40048
+	// 文件尺寸太大
+	CodeFileTooLarge = 40049
+	// 文件类型不允许
+	CodeFileTypeNotAllowed = 40050
+	// 用户容量不足
+	CodeInsufficientCapacity = 40051
+	// 对象名非法
+	CodeIllegalObjectName = 40052
+	// 不支持对根目录执行此操作
+	CodeRootProtected = 40053
+	// 当前目录下已经有同名文件正在上传中
+	CodeConflictUploadOngoing = 40054
+	// 文件信息不一致
+	CodeMetaMismatch = 40055
+	// 不支持该格式的压缩文件
+	CodeUnsupportedArchiveType = 40056
+	// 可用存储策略发生变化
+	CodePolicyChanged = 40057
+	// 分享链接无效
+	CodeShareLinkNotFound = 40058
+	// 不能转存自己的分享
+	CodeSaveOwnShare = 40059
+	// 从机无法向主机发送回调请求
+	CodeSlavePingMaster = 40060
+	// Cloudreve 版本不一致
+	CodeVersionMismatch = 40061
+	// 积分不足
+	CodeInsufficientCredit = 40062
+	// 用户组冲突
+	CodeGroupConflict = 40063
+	// 当前已处于此用户组中
+	CodeGroupInvalid = 40064
+	// 兑换码无效
+	CodeInvalidGiftCode = 40065
+	// 已绑定了QQ账号
+	CodeQQBindConflict = 40066
+	// QQ账号已被绑定其他账号
+	CodeQQBindOtherAccount = 40067
+	// QQ 未绑定对应账号
+	CodeQQNotLinked = 40068
+	// 密码不正确
+	CodeIncorrectPassword = 40069
+	// 分享无法预览
+	CodeDisabledSharePreview = 40070
+	// 签名无效
+	CodeInvalidSign = 40071
 	// CodeDBError 数据库操作失败
 	CodeDBError = 50001
 	// CodeEncryptError 加密失败
@@ -92,6 +204,14 @@ const (
 	CodeCacheOperation = 50006
 	// CodeCallbackError 回调失败
 	CodeCallbackError = 50007
+	// 后台设置更新失败
+	CodeUpdateSetting = 50008
+	// 跨域策略添加失败
+	CodeAddCORS = 50009
+	// 节点不可用
+	CodeNodeOffline = 50010
+	// 文件元信息查询失败
+	CodeQueryMetaFailed = 50011
 	//CodeParamErr 各种奇奇怪怪的参数错误
 	CodeParamErr = 40001
 	// CodeNotSet 未定错误，后续尝试从error中获取
@@ -101,7 +221,7 @@ const (
 // DBErr 数据库操作失败
 func DBErr(msg string, err error) Response {
 	if msg == "" {
-		msg = "数据库操作失败"
+		msg = "Database operation failed."
 	}
 	return Err(CodeDBError, msg, err)
 }
@@ -109,7 +229,7 @@ func DBErr(msg string, err error) Response {
 // ParamErr 各种参数错误
 func ParamErr(msg string, err error) Response {
 	if msg == "" {
-		msg = "参数错误"
+		msg = "Invalid parameters."
 	}
 	return Err(CodeParamErr, msg, err)
 }
@@ -117,7 +237,8 @@ func ParamErr(msg string, err error) Response {
 // Err 通用错误处理
 func Err(errCode int, msg string, err error) Response {
 	// 底层错误是AppError，则尝试从AppError中获取详细信息
-	if appError, ok := err.(AppError); ok {
+	var appError AppError
+	if errors.As(err, &appError) {
 		errCode = appError.Code
 		err = appError.RawError
 		msg = appError.Msg

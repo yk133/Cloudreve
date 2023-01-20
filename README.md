@@ -24,16 +24,19 @@ https://github.com/yk133/CloudreveApp
 <h4 align="center">支持多家云存储驱动的公有云文件系统.</h4>
 
 <p align="center">
-  <a href="https://travis-ci.com/github/cloudreve/Cloudreve/">
-    <img src="https://img.shields.io/travis/com/cloudreve/Cloudreve?style=flat-square"
-         alt="travis">
+  <a href="https://github.com/cloudreve/Cloudreve/actions/workflows/test.yml">
+    <img src="https://img.shields.io/github/workflow/status/cloudreve/Cloudreve/Test?style=flat-square"
+         alt="GitHub Test Workflow">
   </a>
   <a href="https://codecov.io/gh/cloudreve/Cloudreve"><img src="https://img.shields.io/codecov/c/github/cloudreve/Cloudreve?style=flat-square"></a>
   <a href="https://goreportcard.com/report/github.com/cloudreve/Cloudreve">
       <img src="https://goreportcard.com/badge/github.com/cloudreve/Cloudreve?style=flat-square">
   </a>
   <a href="https://github.com/cloudreve/Cloudreve/releases">
-    <img src="https://img.shields.io/github/v/release/cloudreve/Cloudreve?include_prereleases&style=flat-square">
+    <img src="https://img.shields.io/github/v/release/cloudreve/Cloudreve?include_prereleases&style=flat-square" />
+  </a>
+  <a href="https://hub.docker.com/r/cloudreve/cloudreve">
+     <img src="https://img.shields.io/docker/image-size/cloudreve/cloudreve?style=flat-square"/>
   </a>
 </p>
 
@@ -52,7 +55,7 @@ https://github.com/yk133/CloudreveApp
 
 * :cloud: 支持本机、从机、七牛、阿里云 OSS、腾讯云 COS、又拍云、OneDrive (包括世纪互联版) 作为存储端
 * :outbox_tray: 上传/下载 支持客户端直传，支持下载限速
-* 💾 可对接 Aria2 离线下载，可使用多个从机机点分担下载任务
+* 💾 可对接 Aria2 离线下载，可使用多个从机节点分担下载任务
 * 📚 在线 压缩/解压缩、多文件打包下载
 * 💻 覆盖全部存储策略的 WebDAV 协议支持
 * :zap: 拖拽上传、目录上传、流式上传处理
@@ -83,7 +86,7 @@ chmod +x ./cloudreve
 
 ## :gear: 构建
 
-自行构建前需要拥有 `Go >= 1.13`、`yarn`等必要依赖。
+自行构建前需要拥有 `Go >= 1.18`、`node.js`、`yarn`、`zip` 等必要依赖。
 
 #### 克隆代码
 
@@ -100,19 +103,12 @@ cd assets
 yarn install
 # 开始构建
 yarn run build
-```
-
-#### 嵌入静态资源
-
-```shell
-# 回到项目主目录
-cd ../
-
-# 安装 statik, 用于嵌入静态资源
-go get github.com/rakyll/statik
-
-# 开始嵌入
-statik -src=assets/build/  -include=*.html,*.js,*.json,*.css,*.png,*.svg,*.ico -f
+# 构建完成后删除映射文件
+cd build
+find . -name "*.map" -type f -delete
+# 返回项目主目录打包静态资源
+cd ../../
+zip -r - assets/build >assets.zip
 ```
 
 #### 编译项目
@@ -123,10 +119,10 @@ export COMMIT_SHA=$(git rev-parse --short HEAD)
 export VERSION=$(git describe --tags)
 
 # 开始编译
-go build -a -o cloudreve -ldflags " -X 'github.com/cloudreve/Cloudreve/v3/pkg/conf.BackendVersion=$VERSION' -X 'github.com/cloudreve/Cloudreve/v3/pkg/conf.LastCommit=$COMMIT_SHA'"
+go build -a -o cloudreve -ldflags "-s -w -X 'github.com/cloudreve/Cloudreve/v3/pkg/conf.BackendVersion=$VERSION' -X 'github.com/cloudreve/Cloudreve/v3/pkg/conf.LastCommit=$COMMIT_SHA'"
 ```
 
-你也可以使用项目根目录下的`build.sh`快速开始构建：
+你也可以使用项目根目录下的 `build.sh` 快速开始构建：
 
 ```shell
 ./build.sh  [-a] [-c] [-b] [-r]
@@ -138,7 +134,7 @@ go build -a -o cloudreve -ldflags " -X 'github.com/cloudreve/Cloudreve/v3/pkg/co
 
 ## :alembic: 技术栈
 
-* [Go ](https://golang.org/) + [Gin](https://github.com/gin-gonic/gin)
+* [Go](https://golang.org/) + [Gin](https://github.com/gin-gonic/gin)
 * [React](https://github.com/facebook/react) + [Redux](https://github.com/reduxjs/redux) + [Material-UI](https://github.com/mui-org/material-ui)
 
 ## :scroll: 许可证

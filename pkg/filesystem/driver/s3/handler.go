@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/chunk"
-	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/chunk/backoff"
-	"github.com/cloudreve/Cloudreve/v3/pkg/util"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,6 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/chunk"
+	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/chunk/backoff"
+	"github.com/cloudreve/Cloudreve/v3/pkg/util"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -47,6 +48,10 @@ type MetaData struct {
 }
 
 func NewDriver(policy *model.Policy) (*Driver, error) {
+	if policy.OptionsSerialized.ChunkSize == 0 {
+		policy.OptionsSerialized.ChunkSize = 25 << 20 // 25 MB
+	}
+
 	driver := &Driver{
 		Policy: policy,
 	}
@@ -57,7 +62,7 @@ func NewDriver(policy *model.Policy) (*Driver, error) {
 // InitS3Client 初始化S3会话
 func (handler *Driver) InitS3Client() error {
 	if handler.Policy == nil {
-		return errors.New("存储策略为空")
+		return errors.New("empty policy")
 	}
 
 	if handler.svc == nil {
@@ -295,7 +300,10 @@ func (handler *Driver) Source(
 		ttl = 3600
 	}
 
-	signedURL, _ := req.Presign(time.Duration(ttl) * time.Second)
+	signedURL, err := req.Presign(time.Duration(ttl) * time.Second)
+	if err != nil {
+		return "", err
+	}
 
 	// 将最终生成的签名URL域名换成用户自定义的加速域名（如果有）
 	finalURL, err := url.Parse(signedURL)
@@ -399,6 +407,7 @@ func (handler *Driver) Meta(ctx context.Context, path string) (*MetaData, error)
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 
 	return &MetaData{
 		Size: uint64(*res.ContentLength),

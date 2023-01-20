@@ -147,6 +147,7 @@ func TestImportTask_Do(t *testing.T) {
 		mock.ExpectQuery("SELECT(.+)folders").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		// 创建文件时查找父目录，仍然不存在
 		mock.ExpectQuery("SELECT(.+)folders").WillReturnRows(sqlmock.NewRows([]string{"id"}))
+		mock.ExpectQuery("SELECT(.+)folders").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 		task.Do()
 
@@ -176,12 +177,14 @@ func TestImportTask_Do(t *testing.T) {
 		// 查找同名文件，不存在
 		mock.ExpectQuery("SELECT(.+)files").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		// 创建目录
+		mock.ExpectQuery("SELECT(.+)folders").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 		mock.ExpectBegin()
 		mock.ExpectExec("INSERT(.+)folders(.+)").WillReturnResult(sqlmock.NewResult(2, 1))
 		mock.ExpectCommit()
 		// 插入文件记录
 		mock.ExpectBegin()
 		mock.ExpectExec("INSERT(.+)files(.+)").WillReturnResult(sqlmock.NewResult(2, 1))
+		mock.ExpectExec("UPDATE(.+)users(.+)storage(.+)").WillReturnResult(sqlmock.NewResult(2, 1))
 		mock.ExpectCommit()
 
 		task.Do()

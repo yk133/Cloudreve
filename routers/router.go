@@ -16,10 +16,10 @@ import (
 // InitRouter 初始化路由
 func InitRouter() *gin.Engine {
 	if conf.SystemConfig.Mode == "master" {
-		util.Log().Info("当前运行模式：Master")
+		util.Log().Info("Current running mode: Master.")
 		return InitMasterRouter()
 	}
-	util.Log().Info("当前运行模式：Slave")
+	util.Log().Info("Current running mode: Slave.")
 	return InitSlaveRouter()
 
 }
@@ -34,6 +34,8 @@ func InitSlaveRouter() *gin.Engine {
 	v3.Use(middleware.SignRequired(auth.General))
 	// 主机信息解析
 	v3.Use(middleware.MasterMetadata())
+	// 禁止缓存
+	v3.Use(middleware.CacheControl())
 
 	/*
 		路由
@@ -106,7 +108,7 @@ func InitCORS(router *gin.Engine) {
 
 	// slave模式下未启动跨域的警告
 	if conf.SystemConfig.Mode == "slave" {
-		util.Log().Warning("当前作为存储端（Slave）运行，但未启用跨域配置，可能会导致 Master 端无法正常上传文件")
+		util.Log().Warning("You are running Cloudreve as slave node, if you are using slave storage policy, please enable CORS feature in config file, otherwise file cannot be uploaded from Master site.")
 	}
 }
 
@@ -133,12 +135,25 @@ func InitMasterRouter() *gin.Engine {
 	if gin.Mode() == gin.TestMode {
 		v3.Use(middleware.MockHelper())
 	}
+	// 用户会话
 	v3.Use(middleware.CurrentUser())
+
+	// 禁止缓存
+	v3.Use(middleware.CacheControl())
 
 	/*
 		路由
 	*/
 	{
+		// Redirect file source link
+		source := r.Group("f")
+		{
+			source.GET(":id/:name",
+				middleware.HashID(hashid.SourceLinkID),
+				middleware.ValidateSourceLink(),
+				controllers.AnonymousPermLink)
+		}
+
 		// 全局设置相关
 		site := v3.Group("site")
 		{
@@ -202,13 +217,13 @@ func InitMasterRouter() *gin.Engine {
 			file := sign.Group("file")
 			{
 				// 文件外链（直接输出文件数据）
-				file.GET("get/:id/:name", controllers.AnonymousGetContent)
+				file.GET("get/:id/:name", middleware.Sandbox(), controllers.AnonymousGetContent)
 				// 文件外链(301跳转)
-				file.GET("source/:id/:name", controllers.AnonymousPermLink)
-				// 下載已经打包好的文件
-				file.GET("archive/:id/archive.zip", controllers.DownloadArchive)
+				file.GET("source/:id/:name", controllers.AnonymousPermLinkDeprecated)
 				// 下载文件
 				file.GET("download/:id", controllers.Download)
+				// 打包并下载文件
+				file.GET("archive/:sessionID/archive.zip", controllers.DownloadArchive)
 			}
 		}
 
@@ -329,6 +344,11 @@ func InitMasterRouter() *gin.Engine {
 				middleware.CheckShareUnlocked(),
 				controllers.ListSharedFolder,
 			)
+			// 分享目录搜索
+			share.GET("search/:id/:type/:keywords",
+				middleware.CheckShareUnlocked(),
+				controllers.SearchSharedFolder,
+			)
 			// 归档打包下载
 			share.POST("archive/:id",
 				middleware.CheckShareUnlocked(),
@@ -434,7 +454,7 @@ func InitMasterRouter() *gin.Engine {
 					// 列出文件
 					file.POST("list", controllers.AdminListFile)
 					// 预览文件
-					file.GET("preview/:id", controllers.AdminGetFile)
+					file.GET("preview/:id", middleware.Sandbox(), controllers.AdminGetFile)
 					// 删除
 					file.POST("delete", controllers.AdminDeleteFile)
 					// 列出用户或外部文件系统目录
@@ -544,15 +564,15 @@ func InitMasterRouter() *gin.Engine {
 				// 创建文件下载会话
 				file.PUT("download/:id", controllers.CreateDownloadSession)
 				// 预览文件
-				file.GET("preview/:id", controllers.Preview)
+				file.GET("preview/:id", middleware.Sandbox(), controllers.Preview)
 				// 获取文本文件内容
-				file.GET("content/:id", controllers.PreviewText)
+				file.GET("content/:id", middleware.Sandbox(), controllers.PreviewText)
 				// 取得Office文档预览地址
 				file.GET("doc/:id", controllers.GetDocPreview)
 				// 获取缩略图
 				file.GET("thumb/:id", controllers.Thumb)
 				// 取得文件外链
-				file.GET("source/:id", controllers.GetSource)
+				file.POST("source", controllers.GetSource)
 				// 打包要下载的文件
 				file.POST("archive", controllers.Archive)
 				// 创建文件压缩任务

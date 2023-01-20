@@ -36,7 +36,7 @@ func TestHandler_Put(t *testing.T) {
 		{&fsctx.FileStream{
 			SavePath: "TestHandler_Put.txt",
 			File:     io.NopCloser(strings.NewReader("")),
-		}, "物理同名文件已存在或不可用"},
+		}, "file with the same name existed or unavailable"},
 		{&fsctx.FileStream{
 			SavePath: "inner/TestHandler_Put.txt",
 			File:     io.NopCloser(strings.NewReader("")),
@@ -51,7 +51,7 @@ func TestHandler_Put(t *testing.T) {
 			Mode:        fsctx.Append | fsctx.Overwrite,
 			SavePath:    "inner/TestHandler_Put.txt",
 			File:        io.NopCloser(strings.NewReader("123")),
-		}, "未上传完成的文件分片与预期大小不一致"},
+		}, "size of unfinished uploaded chunks is not as expected"},
 		{&fsctx.FileStream{
 			Mode:     fsctx.Append | fsctx.Overwrite,
 			SavePath: "inner/TestHandler_Put.txt",
@@ -81,12 +81,12 @@ func TestHandler_Delete(t *testing.T) {
 	asserts := assert.New(t)
 	handler := Driver{}
 	ctx := context.Background()
-	filePath := util.RelativePath("test.file")
+	filePath := util.RelativePath("TestHandler_Delete.file")
 
 	file, err := os.Create(filePath)
 	asserts.NoError(err)
 	_ = file.Close()
-	list, err := handler.Delete(ctx, []string{"test.file"})
+	list, err := handler.Delete(ctx, []string{"TestHandler_Delete.file"})
 	asserts.Equal([]string{}, list)
 	asserts.NoError(err)
 
@@ -94,7 +94,7 @@ func TestHandler_Delete(t *testing.T) {
 	_ = file.Close()
 	file, _ = os.OpenFile(filePath, os.O_RDWR, os.FileMode(0))
 	asserts.NoError(err)
-	list, err = handler.Delete(ctx, []string{"test.file", "test.notexist"})
+	list, err = handler.Delete(ctx, []string{"TestHandler_Delete.file", "test.notexist"})
 	file.Close()
 	asserts.Equal([]string{}, list)
 	asserts.NoError(err)
@@ -105,7 +105,7 @@ func TestHandler_Delete(t *testing.T) {
 
 	file, err = os.Create(filePath)
 	asserts.NoError(err)
-	list, err = handler.Delete(ctx, []string{"test.file"})
+	list, err = handler.Delete(ctx, []string{"TestHandler_Delete.file"})
 	_ = file.Close()
 	asserts.Equal([]string{}, list)
 	asserts.NoError(err)

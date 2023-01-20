@@ -17,7 +17,8 @@ func TestFolder_Create(t *testing.T) {
 		Name: "new folder",
 	}
 
-	// 插入成功
+	// 不存在，插入成功
+	mock.ExpectQuery("SELECT(.+)folders(.+)").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT(.+)").WillReturnResult(sqlmock.NewResult(5, 1))
 	mock.ExpectCommit()
@@ -27,12 +28,21 @@ func TestFolder_Create(t *testing.T) {
 	asserts.NoError(mock.ExpectationsWereMet())
 
 	// 插入失败
+	mock.ExpectQuery("SELECT(.+)folders(.+)").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT(.+)").WillReturnError(errors.New("error"))
 	mock.ExpectRollback()
+	mock.ExpectQuery("SELECT(.+)folders(.+)").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	fid, err = folder.Create()
-	asserts.Error(err)
-	asserts.Equal(uint(0), fid)
+	asserts.NoError(err)
+	asserts.Equal(uint(1), fid)
+	asserts.NoError(mock.ExpectationsWereMet())
+
+	// 存在，直接返回
+	mock.ExpectQuery("SELECT(.+)folders(.+)").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(5))
+	fid, err = folder.Create()
+	asserts.NoError(err)
+	asserts.Equal(uint(5), fid)
 	asserts.NoError(mock.ExpectationsWereMet())
 }
 
@@ -572,5 +582,41 @@ func TestTraceRoot(t *testing.T) {
 		asserts.Error(folder.TraceRoot())
 		asserts.Equal("parent", folder.Position)
 		asserts.NoError(mock.ExpectationsWereMet())
+	}
+}
+
+func TestFolder_Rename(t *testing.T) {
+	asserts := assert.New(t)
+	folder := Folder{
+		Model: gorm.Model{
+			ID: 1,
+		},
+		Name:     "test_name",
+		OwnerID:  1,
+		Position: "/test",
+	}
+
+	// 成功
+	{
+		mock.ExpectBegin()
+		mock.ExpectExec("UPDATE(.+)folders(.+)SET(.+)").
+			WithArgs("test_name_new", 1).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+		mock.ExpectCommit()
+		err := folder.Rename("test_name_new")
+		asserts.NoError(mock.ExpectationsWereMet())
+		asserts.NoError(err)
+	}
+
+	// 出现错误
+	{
+		mock.ExpectBegin()
+		mock.ExpectExec("UPDATE(.+)folders(.+)SET(.+)").
+			WithArgs("test_name_new", 1).
+			WillReturnError(errors.New("error"))
+		mock.ExpectRollback()
+		err := folder.Rename("test_name_new")
+		asserts.NoError(mock.ExpectationsWereMet())
+		asserts.Error(err)
 	}
 }

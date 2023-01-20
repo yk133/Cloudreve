@@ -3,6 +3,7 @@ package model
 import (
 	"crypto/md5"
 	"crypto/sha1"
+	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -35,8 +36,8 @@ type User struct {
 	Storage   uint64
 	TwoFactor string
 	Avatar    string
-	Options   string `json:"-" gorm:"type:text"`
-	Authn     string `gorm:"type:text"`
+	Options   string `json:"-" gorm:"size:4294967295"`
+	Authn     string `gorm:"size:4294967295"`
 
 	// 关联模型
 	Group  Group  `gorm:"save_associations:false:false"`
@@ -44,6 +45,10 @@ type User struct {
 
 	// 数据库忽略字段
 	OptionsSerialized UserOption `gorm:"-"`
+}
+
+func init() {
+	gob.Register(User{})
 }
 
 // UserOption 用户个性化配置字段

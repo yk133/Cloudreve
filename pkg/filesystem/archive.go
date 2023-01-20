@@ -2,11 +2,9 @@ package filesystem
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,8 +16,7 @@ import (
 	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/fsctx"
 	"github.com/cloudreve/Cloudreve/v3/pkg/util"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/transform"
+	"github.com/mholt/archiver/v4"
 )
 
 /* ===============
@@ -28,17 +25,17 @@ import (
 */
 
 // Compress 创建给定目录和文件的压缩文件
-func (fs *FileSystem) Compress(ctx context.Context, folderIDs, fileIDs []uint, isArchive bool) (string, error) {
+func (fs *FileSystem) Compress(ctx context.Context, writer io.Writer, folderIDs, fileIDs []uint, isArchive bool) error {
 	// 查找待压缩目录
 	folders, err := model.GetFoldersByIDs(folderIDs, fs.User.ID)
 	if err != nil && len(folderIDs) != 0 {
-		return "", ErrDBListObjects
+		return ErrDBListObjects
 	}
 
 	// 查找待压缩文件
 	files, err := model.GetFilesByIDs(fileIDs, fs.User.ID)
 	if err != nil && len(fileIDs) != 0 {
-		return "", ErrDBListObjects
+		return ErrDBListObjects
 	}
 
 	// 如果上下文限制了父目录，则进行检查
@@ -46,14 +43,14 @@ func (fs *FileSystem) Compress(ctx context.Context, folderIDs, fileIDs []uint, i
 		// 检查目录
 		for _, folder := range folders {
 			if *folder.ParentID != parent.ID {
-				return "", ErrObjectNotExist
+				return ErrObjectNotExist
 			}
 		}
 
 		// 检查文件
 		for _, file := range files {
 			if file.FolderID != parent.ID {
-				return "", ErrObjectNotExist
+				return ErrObjectNotExist
 			}
 		}
 	}
@@ -73,25 +70,8 @@ func (fs *FileSystem) Compress(ctx context.Context, folderIDs, fileIDs []uint, i
 		files[i].Position = ""
 	}
 
-	// 创建临时压缩文件
-	saveFolder := "archive"
-	if !isArchive {
-		saveFolder = "compress"
-	}
-	zipFilePath := filepath.Join(
-		util.RelativePath(model.GetSettingByName("temp_path")),
-		saveFolder,
-		fmt.Sprintf("archive_%d.zip", time.Now().UnixNano()),
-	)
-	zipFile, err := util.CreatNestedFile(zipFilePath)
-	if err != nil {
-		util.Log().Warning("%s", err)
-		return "", err
-	}
-	defer zipFile.Close()
-
 	// 创建压缩文件Writer
-	zipWriter := zip.NewWriter(zipFile)
+	zipWriter := zip.NewWriter(writer)
 	defer zipWriter.Close()
 
 	ctx = reqContext
@@ -101,10 +81,9 @@ func (fs *FileSystem) Compress(ctx context.Context, folderIDs, fileIDs []uint, i
 		select {
 		case <-reqContext.Done():
 			// 取消压缩请求
-			fs.cancelCompress(ctx, zipWriter, zipFile, zipFilePath)
-			return "", ErrClientCanceled
+			return ErrClientCanceled
 		default:
-			fs.doCompress(ctx, nil, &folders[i], zipWriter, isArchive)
+			fs.doCompress(reqContext, nil, &folders[i], zipWriter, isArchive)
 		}
 
 	}
@@ -112,22 +91,13 @@ func (fs *FileSystem) Compress(ctx context.Context, folderIDs, fileIDs []uint, i
 		select {
 		case <-reqContext.Done():
 			// 取消压缩请求
-			fs.cancelCompress(ctx, zipWriter, zipFile, zipFilePath)
-			return "", ErrClientCanceled
+			return ErrClientCanceled
 		default:
-			fs.doCompress(ctx, &files[i], nil, zipWriter, isArchive)
+			fs.doCompress(reqContext, &files[i], nil, zipWriter, isArchive)
 		}
 	}
 
-	return zipFilePath, nil
-}
-
-// cancelCompress 取消压缩进程
-func (fs *FileSystem) cancelCompress(ctx context.Context, zipWriter *zip.Writer, file *os.File, path string) {
-	util.Log().Debug("客户端取消压缩请求")
-	zipWriter.Close()
-	file.Close()
-	_ = os.Remove(path)
+	return nil
 }
 
 func (fs *FileSystem) doCompress(ctx context.Context, file *model.File, folder *model.Folder, zipWriter *zip.Writer, isArchive bool) {
@@ -137,7 +107,7 @@ func (fs *FileSystem) doCompress(ctx context.Context, file *model.File, folder *
 		fs.Policy = file.GetPolicy()
 		err := fs.DispatchHandler()
 		if err != nil {
-			util.Log().Warning("无法压缩文件%s，%s", file.Name, err)
+			util.Log().Warning("Failed to compress file %q: %s", file.Name, err)
 			return
 		}
 
@@ -147,7 +117,7 @@ func (fs *FileSystem) doCompress(ctx context.Context, file *model.File, folder *
 			file.SourceName,
 		)
 		if err != nil {
-			util.Log().Debug("Open%s，%s", file.Name, err)
+			util.Log().Debug("Failed to open %q: %s", file.Name, err)
 			return
 		}
 		if closer, ok := fileToZip.(io.Closer); ok {
@@ -195,7 +165,7 @@ func (fs *FileSystem) doCompress(ctx context.Context, file *model.File, folder *
 }
 
 // Decompress 解压缩给定压缩文件到dst目录
-func (fs *FileSystem) Decompress(ctx context.Context, src, dst string) error {
+func (fs *FileSystem) Decompress(ctx context.Context, src, dst, encoding string) error {
 	err := fs.ResetFileIfNotExist(ctx, src)
 	if err != nil {
 		return err
@@ -206,7 +176,7 @@ func (fs *FileSystem) Decompress(ctx context.Context, src, dst string) error {
 		// 结束时删除临时压缩文件
 		if tempZipFilePath != "" {
 			if err := os.Remove(tempZipFilePath); err != nil {
-				util.Log().Warning("无法删除临时压缩文件 %s , %s", tempZipFilePath, err)
+				util.Log().Warning("Failed to delete temp archive file %q: %s", tempZipFilePath, err)
 			}
 		}
 	}()
@@ -217,6 +187,8 @@ func (fs *FileSystem) Decompress(ctx context.Context, src, dst string) error {
 		return err
 	}
 
+	defer fileStream.Close()
+
 	tempZipFilePath = filepath.Join(
 		util.RelativePath(model.GetSettingByName("temp_path")),
 		"decompress",
@@ -225,26 +197,47 @@ func (fs *FileSystem) Decompress(ctx context.Context, src, dst string) error {
 
 	zipFile, err := util.CreatNestedFile(tempZipFilePath)
 	if err != nil {
-		util.Log().Warning("无法创建临时压缩文件 %s , %s", tempZipFilePath, err)
+		util.Log().Warning("Failed to create temp archive file %q: %s", tempZipFilePath, err)
 		tempZipFilePath = ""
 		return err
 	}
 	defer zipFile.Close()
 
-	_, err = io.Copy(zipFile, fileStream)
+	// 下载前先判断是否是可解压的格式
+	format, readStream, err := archiver.Identify(fs.FileTarget[0].SourceName, fileStream)
 	if err != nil {
-		util.Log().Warning("无法写入临时压缩文件 %s , %s", tempZipFilePath, err)
+		util.Log().Warning("Failed to detect compressed format of file %q: %s", fs.FileTarget[0].SourceName, err)
 		return err
 	}
 
-	zipFile.Close()
-
-	// 解压缩文件
-	r, err := zip.OpenReader(tempZipFilePath)
-	if err != nil {
-		return err
+	extractor, ok := format.(archiver.Extractor)
+	if !ok {
+		return fmt.Errorf("file not an extractor %s", fs.FileTarget[0].SourceName)
 	}
-	defer r.Close()
+
+	// 只有zip格式可以多个文件同时上传
+	var isZip bool
+	switch extractor.(type) {
+	case archiver.Zip:
+		extractor = archiver.Zip{TextEncoding: encoding}
+		isZip = true
+	}
+
+	// 除了zip必须下载到本地，其余的可以边下载边解压
+	reader := readStream
+	if isZip {
+		_, err = io.Copy(zipFile, readStream)
+		if err != nil {
+			util.Log().Warning("Failed to write temp archive file %q: %s", tempZipFilePath, err)
+			return err
+		}
+
+		fileStream.Close()
+
+		// 设置文件偏移量
+		zipFile.Seek(0, io.SeekStart)
+		reader = zipFile
+	}
 
 	// 重设存储策略
 	fs.Policy = &fs.User.Policy
@@ -260,64 +253,64 @@ func (fs *FileSystem) Decompress(ctx context.Context, src, dst string) error {
 		worker <- i
 	}
 
-	for _, f := range r.File {
-		fileName := f.Name
-		// 处理非UTF-8编码
-		if f.NonUTF8 {
-			i := bytes.NewReader([]byte(fileName))
-			decoder := transform.NewReader(i, simplifiedchinese.GB18030.NewDecoder())
-			content, _ := ioutil.ReadAll(decoder)
-			fileName = string(content)
-		}
+	// 上传文件函数
+	uploadFunc := func(fileStream io.ReadCloser, size int64, savePath, rawPath string) {
+		defer func() {
+			if isZip {
+				worker <- 1
+				wg.Done()
+			}
+			if err := recover(); err != nil {
+				util.Log().Warning("Error while uploading files inside of archive file.")
+				fmt.Println(err)
+			}
+		}()
 
-		rawPath := util.FormSlash(fileName)
+		err := fs.UploadFromStream(ctx, &fsctx.FileStream{
+			File:        fileStream,
+			Size:        uint64(size),
+			Name:        path.Base(savePath),
+			VirtualPath: path.Dir(savePath),
+		}, true)
+		fileStream.Close()
+		if err != nil {
+			util.Log().Debug("Failed to upload file %q in archive file: %s, skipping...", rawPath, err)
+		}
+	}
+
+	// 解压缩文件，回调函数如果出错会停止解压的下一步进行，全部return nil
+	err = extractor.Extract(ctx, reader, nil, func(ctx context.Context, f archiver.File) error {
+		rawPath := util.FormSlash(f.NameInArchive)
 		savePath := path.Join(dst, rawPath)
 		// 路径是否合法
 		if !strings.HasPrefix(savePath, util.FillSlash(path.Clean(dst))) {
-			return fmt.Errorf("%s: illegal file path", f.Name)
+			util.Log().Warning("%s: illegal file path", f.NameInArchive)
+			return nil
 		}
 
 		// 如果是目录
-		if f.FileInfo().IsDir() {
+		if f.FileInfo.IsDir() {
 			fs.CreateDirectory(ctx, savePath)
-			continue
+			return nil
 		}
 
 		// 上传文件
 		fileStream, err := f.Open()
 		if err != nil {
-			util.Log().Warning("无法打开压缩包内文件%s , %s , 跳过", rawPath, err)
-			continue
+			util.Log().Warning("Failed to open file %q in archive file: %s, skipping...", rawPath, err)
+			return nil
 		}
 
-		select {
-		case <-worker:
+		if !isZip {
+			uploadFunc(fileStream, f.FileInfo.Size(), savePath, rawPath)
+		} else {
+			<-worker
 			wg.Add(1)
-			go func(fileStream io.ReadCloser, size int64) {
-				defer func() {
-					worker <- 1
-					wg.Done()
-					if err := recover(); err != nil {
-						util.Log().Warning("上传压缩包内文件时出错")
-						fmt.Println(err)
-					}
-				}()
-
-				err = fs.UploadFromStream(ctx, &fsctx.FileStream{
-					File:        fileStream,
-					Size:        uint64(size),
-					Name:        path.Base(savePath),
-					VirtualPath: path.Dir(savePath),
-				}, true)
-				fileStream.Close()
-				if err != nil {
-					util.Log().Debug("无法上传压缩包内的文件%s , %s , 跳过", rawPath, err)
-				}
-			}(fileStream, f.FileInfo().Size())
+			go uploadFunc(fileStream, f.FileInfo.Size(), savePath, rawPath)
 		}
-
-	}
+		return nil
+	})
 	wg.Wait()
-	return nil
+	return err
 
 }

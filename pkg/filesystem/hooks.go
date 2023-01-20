@@ -48,7 +48,7 @@ func (fs *FileSystem) Trigger(ctx context.Context, name string, file fsctx.FileH
 		for _, hook := range hooks {
 			err := hook(ctx, fs, file)
 			if err != nil {
-				util.Log().Warning("钩子执行失败：%s", err)
+				util.Log().Warning("Failed to execute hook：%s", err)
 				return err
 			}
 		}
@@ -116,7 +116,7 @@ func HookDeleteTempFile(ctx context.Context, fs *FileSystem, file fsctx.FileHead
 	// 删除临时文件
 	_, err := fs.Handler.Delete(ctx, []string{file.Info().SavePath})
 	if err != nil {
-		util.Log().Warning("无法清理上传临时文件，%s", err)
+		util.Log().Warning("Failed to clean-up temp files: %s", err)
 	}
 
 	return nil
@@ -152,7 +152,6 @@ func HookCancelContext(ctx context.Context, fs *FileSystem, file fsctx.FileHeade
 }
 
 // HookUpdateSourceName 更新文件SourceName
-// TODO：测试
 func HookUpdateSourceName(ctx context.Context, fs *FileSystem, file fsctx.FileHeader) error {
 	originFile, ok := ctx.Value(fsctx.FileModelCtx).(model.File)
 	if !ok {
@@ -208,14 +207,10 @@ func SlaveAfterUpload(session *serializer.UploadSession) Hook {
 func GenericAfterUpload(ctx context.Context, fs *FileSystem, fileHeader fsctx.FileHeader) error {
 	fileInfo := fileHeader.Info()
 
-	// 检查路径是否存在，不存在就创建
-	isExist, folder := fs.IsPathExist(fileInfo.VirtualPath)
-	if !isExist {
-		newFolder, err := fs.CreateDirectory(ctx, fileInfo.VirtualPath)
-		if err != nil {
-			return err
-		}
-		folder = newFolder
+	// 创建或查找根目录
+	folder, err := fs.CreateDirectory(ctx, fileInfo.VirtualPath)
+	if err != nil {
+		return err
 	}
 
 	// 检查文件是否存在
@@ -315,6 +310,10 @@ func HookPopPlaceholderToFile(picInfo string) Hook {
 	return func(ctx context.Context, fs *FileSystem, fileHeader fsctx.FileHeader) error {
 		fileInfo := fileHeader.Info()
 		fileModel := fileInfo.Model.(*model.File)
+		if picInfo == "" && fs.Policy.IsThumbExist(fileInfo.FileName) {
+			picInfo = "1,1"
+		}
+
 		return fileModel.PopChunkToFile(fileInfo.LastModified, picInfo)
 	}
 }

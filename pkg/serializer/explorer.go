@@ -40,6 +40,7 @@ type Object struct {
 	Size          uint64    `json:"size"`
 	Type          string    `json:"type"`
 	Date          time.Time `json:"date"`
+	CreateDate    time.Time `json:"create_date"`
 	Key           string    `json:"key,omitempty"`
 	SourceEnabled bool      `json:"source_enabled"`
 	MD5           string    `json:"md5,omitempty"`
@@ -75,4 +76,12 @@ func BuildObjectList(parent uint, objects []Object, policy *model.Policy) Object
 	}
 
 	return res
+}
+
+// Sources 获取外链的结果响应
+type Sources struct {
+	URL    string `json:"url"`
+	Name   string `json:"name"`
+	Parent uint   `json:"parent"`
+	Error  string `json:"error,omitempty"`
 }

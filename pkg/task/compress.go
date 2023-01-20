@@ -3,7 +3,10 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
 	model "github.com/cloudreve/Cloudreve/v3/models"
 	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem"
@@ -66,7 +69,7 @@ func (job *CompressTask) SetError(err *JobError) {
 func (job *CompressTask) removeZipFile() {
 	if job.zipPath != "" {
 		if err := os.Remove(job.zipPath); err != nil {
-			util.Log().Warning("无法删除临时压缩文件 %s , %s", job.zipPath, err)
+			util.Log().Warning("Failed to delete temp zip file %q: %s", job.zipPath, err)
 		}
 	}
 }
@@ -90,23 +93,40 @@ func (job *CompressTask) Do() {
 		return
 	}
 
-	util.Log().Debug("开始压缩文件")
+	util.Log().Debug("Starting compress file...")
 	job.TaskModel.SetProgress(CompressingProgress)
+
+	// 创建临时压缩文件
+	saveFolder := "compress"
+	zipFilePath := filepath.Join(
+		util.RelativePath(model.GetSettingByName("temp_path")),
+		saveFolder,
+		fmt.Sprintf("archive_%d.zip", time.Now().UnixNano()),
+	)
+	zipFile, err := util.CreatNestedFile(zipFilePath)
+	if err != nil {
+		util.Log().Warning("%s", err)
+		job.SetErrorMsg(err.Error())
+		return
+	}
+
+	defer zipFile.Close()
 
 	// 开始压缩
 	ctx := context.Background()
-	zipFile, err := fs.Compress(ctx, job.TaskProps.Dirs, job.TaskProps.Files, false)
+	err = fs.Compress(ctx, zipFile, job.TaskProps.Dirs, job.TaskProps.Files, false)
 	if err != nil {
 		job.SetErrorMsg(err.Error())
 		return
 	}
-	job.zipPath = zipFile
 
-	util.Log().Debug("压缩文件存放至%s，开始上传", zipFile)
+	job.zipPath = zipFilePath
+	zipFile.Close()
+	util.Log().Debug("Compressed file saved to %q, start uploading it...", zipFilePath)
 	job.TaskModel.SetProgress(TransferringProgress)
 
 	// 上传文件
-	err = fs.UploadFromPath(ctx, zipFile, job.TaskProps.Dst, 0)
+	err = fs.UploadFromPath(ctx, zipFilePath, job.TaskProps.Dst, 0)
 	if err != nil {
 		job.SetErrorMsg(err.Error())
 		return

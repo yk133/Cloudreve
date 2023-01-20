@@ -30,6 +30,10 @@ type Driver struct {
 }
 
 func NewDriver(policy *model.Policy) *Driver {
+	if policy.OptionsSerialized.ChunkSize == 0 {
+		policy.OptionsSerialized.ChunkSize = 25 << 20 // 25 MB
+	}
+
 	mac := qbox.NewMac(policy.AccessKey, policy.SecretKey)
 	cfg := &storage.Config{UseHTTPS: true}
 	return &Driver{
@@ -156,7 +160,7 @@ func (handler *Driver) Put(ctx context.Context, file fsctx.FileHeader) error {
 	defer file.Close()
 
 	// 凭证有效期
-	credentialTTL := model.GetIntSetting("upload_credential_timeout", 3600)
+	credentialTTL := model.GetIntSetting("upload_session_timeout", 3600)
 
 	// 生成上传策略
 	fileInfo := file.Info()

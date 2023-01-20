@@ -34,13 +34,15 @@ type Client interface {
 
 // HTTPClient 实现 Client 接口
 type HTTPClient struct {
-	mu      sync.Mutex
-	options *options
+	mu         sync.Mutex
+	options    *options
+	tpsLimiter TPSLimiter
 }
 
 func NewClient(opts ...Option) Client {
 	client := &HTTPClient{
-		options: newDefaultOption(),
+		options:    newDefaultOption(),
+		tpsLimiter: globalTPSLimiter,
 	}
 
 	for _, o := range opts {
@@ -54,7 +56,7 @@ func NewClient(opts ...Option) Client {
 func (c *HTTPClient) Request(method, target string, body io.Reader, opts ...Option) *Response {
 	// 应用额外设置
 	c.mu.Lock()
-	options := *c.options
+	options := c.options.clone()
 	c.mu.Unlock()
 	for _, o := range opts {
 		o.apply(&options)
@@ -126,6 +128,10 @@ func (c *HTTPClient) Request(method, target string, body io.Reader, opts ...Opti
 		}
 	}
 
+	if options.tps > 0 {
+		c.tpsLimiter.Limit(options.ctx, options.tpsLimiterToken, options.tps, options.tpsBurst)
+	}
+
 	// 发送请求
 	resp, err := client.Do(req)
 	if err != nil {
@@ -173,7 +179,7 @@ func (resp *Response) DecodeResponse() (*serializer.Response, error) {
 	var res serializer.Response
 	err = json.Unmarshal([]byte(respString), &res)
 	if err != nil {
-		util.Log().Debug("无法解析回调服务端响应：%s", string(respString))
+		util.Log().Debug("Failed to parse response: %s", string(respString))
 		return nil, err
 	}
 	return &res, nil
@@ -245,7 +251,7 @@ func (instance NopRSCloser) Seek(offset int64, whence int) (int64, error) {
 			return instance.status.Size, nil
 		}
 	}
-	return 0, errors.New("未实现")
+	return 0, errors.New("not implemented")
 
 }
 

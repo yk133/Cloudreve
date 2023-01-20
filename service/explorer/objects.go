@@ -2,9 +2,9 @@ package explorer
 
 import (
 	"context"
+	"encoding/gob"
 	"fmt"
 	"math"
-	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -13,7 +13,6 @@ import (
 	"github.com/cloudreve/Cloudreve/v3/pkg/auth"
 	"github.com/cloudreve/Cloudreve/v3/pkg/cache"
 	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem"
-	"github.com/cloudreve/Cloudreve/v3/pkg/filesystem/fsctx"
 	"github.com/cloudreve/Cloudreve/v3/pkg/hashid"
 	"github.com/cloudreve/Cloudreve/v3/pkg/serializer"
 	"github.com/cloudreve/Cloudreve/v3/pkg/task"
@@ -56,8 +55,9 @@ type ItemCompressService struct {
 
 // ItemDecompressService 文件解压缩任务服务
 type ItemDecompressService struct {
-	Src string `json:"src"`
-	Dst string `json:"dst" binding:"required,min=1,max=65535"`
+	Src      string `json:"src"`
+	Dst      string `json:"dst" binding:"required,min=1,max=65535"`
+	Encoding string `json:"encoding"`
 }
 
 // ItemPropertyService 获取对象属性服务
@@ -65,6 +65,10 @@ type ItemPropertyService struct {
 	ID        string `binding:"required"`
 	TraceRoot bool   `form:"trace_root"`
 	IsFolder  bool   `form:"is_folder"`
+}
+
+func init() {
+	gob.Register(ItemIDService{})
 }
 
 // Raw 批量解码HashID，获取原始ID
@@ -98,41 +102,51 @@ func (service *ItemDecompressService) CreateDecompressTask(c *gin.Context) seria
 	// 创建文件系统
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+		return serializer.Err(serializer.CodeCreateFSError, "", err)
 	}
 	defer fs.Recycle()
 
 	// 检查用户组权限
 	if !fs.User.Group.OptionsSerialized.ArchiveTask {
-		return serializer.Err(serializer.CodeGroupNotAllowed, "当前用户组无法进行此操作", nil)
+		return serializer.Err(serializer.CodeGroupNotAllowed, "", nil)
 	}
 
 	// 存放目录是否存在
 	if exist, _ := fs.IsPathExist(service.Dst); !exist {
-		return serializer.Err(serializer.CodeNotFound, "存放路径不存在", nil)
+		return serializer.Err(serializer.CodeParentNotExist, "", nil)
 	}
 
 	// 压缩包是否存在
 	exist, file := fs.IsFileExist(service.Src)
 	if !exist {
-		return serializer.Err(serializer.CodeNotFound, "文件不存在", nil)
+		return serializer.Err(serializer.CodeFileNotFound, "", nil)
 	}
 
 	// 文件尺寸限制
 	if fs.User.Group.OptionsSerialized.DecompressSize != 0 && file.Size > fs.User.Group.
 		OptionsSerialized.DecompressSize {
-		return serializer.Err(serializer.CodeParamErr, "文件太大", nil)
+		return serializer.Err(serializer.CodeFileTooLarge, "", nil)
 	}
 
-	// 必须是zip压缩包
-	if !strings.HasSuffix(file.Name, ".zip") {
-		return serializer.Err(serializer.CodeParamErr, "只能解压 ZIP 格式的压缩文件", nil)
+	// 支持的压缩格式后缀
+	var (
+		suffixes = []string{".zip", ".gz", ".xz", ".tar", ".rar"}
+		matched  bool
+	)
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(file.Name, suffix) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return serializer.Err(serializer.CodeUnsupportedArchiveType, "", nil)
 	}
 
 	// 创建任务
-	job, err := task.NewDecompressTask(fs.User, service.Src, service.Dst)
+	job, err := task.NewDecompressTask(fs.User, service.Src, service.Dst, service.Encoding)
 	if err != nil {
-		return serializer.Err(serializer.CodeNotSet, "任务创建失败", err)
+		return serializer.Err(serializer.CodeCreateTaskError, "", err)
 	}
 	task.TaskPoll.Submit(job)
 
@@ -145,13 +159,13 @@ func (service *ItemCompressService) CreateCompressTask(c *gin.Context) serialize
 	// 创建文件系统
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+		return serializer.Err(serializer.CodeCreateFSError, "", err)
 	}
 	defer fs.Recycle()
 
 	// 检查用户组权限
 	if !fs.User.Group.OptionsSerialized.ArchiveTask {
-		return serializer.Err(serializer.CodeGroupNotAllowed, "当前用户组无法进行此操作", nil)
+		return serializer.Err(serializer.CodeGroupNotAllowed, "", nil)
 	}
 
 	// 补齐压缩文件扩展名（如果没有）
@@ -161,30 +175,30 @@ func (service *ItemCompressService) CreateCompressTask(c *gin.Context) serialize
 
 	// 存放目录是否存在，是否重名
 	if exist, _ := fs.IsPathExist(service.Dst); !exist {
-		return serializer.Err(serializer.CodeNotFound, "存放路径不存在", nil)
+		return serializer.Err(serializer.CodeParentNotExist, "", nil)
 	}
 	if exist, _ := fs.IsFileExist(path.Join(service.Dst, service.Name)); exist {
-		return serializer.ParamErr("名为 "+service.Name+" 的文件已存在", nil)
+		return serializer.ParamErr("File "+service.Name+" already exist", nil)
 	}
 
 	// 检查文件名合法性
 	if !fs.ValidateLegalName(context.Background(), service.Name) {
-		return serializer.ParamErr("文件名非法", nil)
+		return serializer.Err(serializer.CodeIllegalObjectName, "", nil)
 	}
 	if !fs.ValidateExtension(context.Background(), service.Name) {
-		return serializer.ParamErr("不允许存储此扩展名的文件", nil)
+		return serializer.Err(serializer.CodeFileTypeNotAllowed, "", nil)
 	}
 
 	// 递归列出待压缩子目录
 	folders, err := model.GetRecursiveChildFolder(service.Src.Raw().Dirs, fs.User.ID, true)
 	if err != nil {
-		return serializer.Err(serializer.CodeDBError, "无法列出子目录", err)
+		return serializer.DBErr("Failed to list folders", err)
 	}
 
 	// 列出所有待压缩文件
 	files, err := model.GetChildFilesOfFolders(&folders)
 	if err != nil {
-		return serializer.Err(serializer.CodeDBError, "无法列出子文件", err)
+		return serializer.DBErr("Failed to list files", err)
 	}
 
 	// 计算待压缩文件大小
@@ -194,23 +208,23 @@ func (service *ItemCompressService) CreateCompressTask(c *gin.Context) serialize
 	}
 
 	// 文件尺寸限制
-	if fs.User.Group.OptionsSerialized.DecompressSize != 0 && totalSize > fs.User.Group.
+	if fs.User.Group.OptionsSerialized.CompressSize != 0 && totalSize > fs.User.Group.
 		OptionsSerialized.CompressSize {
-		return serializer.Err(serializer.CodeParamErr, "文件太大", nil)
+		return serializer.Err(serializer.CodeFileTooLarge, "", nil)
 	}
 
 	// 按照平均压缩率计算用户空间是否足够
 	compressRatio := 0.4
 	spaceNeeded := uint64(math.Round(float64(totalSize) * compressRatio))
 	if fs.User.GetRemainingCapacity() < spaceNeeded {
-		return serializer.Err(serializer.CodeParamErr, "剩余空间不足", err)
+		return serializer.Err(serializer.CodeInsufficientCapacity, "", err)
 	}
 
 	// 创建任务
 	job, err := task.NewCompressTask(fs.User, path.Join(service.Dst, service.Name), service.Src.Raw().Dirs,
 		service.Src.Raw().Items)
 	if err != nil {
-		return serializer.Err(serializer.CodeNotSet, "任务创建失败", err)
+		return serializer.Err(serializer.CodeCreateTaskError, "", err)
 	}
 	task.TaskPoll.Submit(job)
 
@@ -223,46 +237,29 @@ func (service *ItemIDService) Archive(ctx context.Context, c *gin.Context) seria
 	// 创建文件系统
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+		return serializer.Err(serializer.CodeCreateFSError, "", err)
 	}
 	defer fs.Recycle()
 
 	// 检查用户组权限
 	if !fs.User.Group.OptionsSerialized.ArchiveDownload {
-		return serializer.Err(serializer.CodeGroupNotAllowed, "当前用户组无法进行此操作", nil)
+		return serializer.Err(serializer.CodeGroupNotAllowed, "", nil)
 	}
 
-	// 开始压缩
-	ctx = context.WithValue(ctx, fsctx.GinCtx, c)
-	items := service.Raw()
-	zipFile, err := fs.Compress(ctx, items.Dirs, items.Items, true)
-	if err != nil {
-		return serializer.Err(serializer.CodeNotSet, "无法创建压缩文件", err)
-	}
-
-	// 生成一次性压缩文件下载地址
-	siteURL, err := url.Parse(model.GetSettingByName("siteURL"))
-	if err != nil {
-		return serializer.Err(serializer.CodeNotSet, "无法解析站点URL", err)
-	}
-	zipID := util.RandStringRunes(16)
+	// 创建打包下载会话
 	ttl := model.GetIntSetting("archive_timeout", 30)
-	signedURI, err := auth.SignURI(
+	downloadSessionID := util.RandStringRunes(16)
+	cache.Set("archive_"+downloadSessionID, *service, ttl)
+	cache.Set("archive_user_"+downloadSessionID, *fs.User, ttl)
+	signURL, err := auth.SignURI(
 		auth.General,
-		fmt.Sprintf("/api/v3/file/archive/%s/archive.zip", zipID),
-		time.Now().Unix()+int64(ttl),
+		fmt.Sprintf("/api/v3/file/archive/%s/archive.zip", downloadSessionID),
+		int64(ttl),
 	)
-	finalURL := siteURL.ResolveReference(signedURI).String()
-
-	// 将压缩文件记录存入缓存
-	err = cache.Set("archive_"+zipID, zipFile, ttl)
-	if err != nil {
-		return serializer.Err(serializer.CodeIOFailed, "无法写入缓存", err)
-	}
 
 	return serializer.Response{
 		Code: 0,
-		Data: finalURL,
+		Data: signURL.String(),
 	}
 }
 
@@ -293,7 +290,7 @@ func (service *ItemMoveService) Move(ctx context.Context, c *gin.Context) serial
 	// 创建文件系统
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+		return serializer.Err(serializer.CodeCreateFSError, "", err)
 	}
 	defer fs.Recycle()
 
@@ -314,13 +311,13 @@ func (service *ItemMoveService) Move(ctx context.Context, c *gin.Context) serial
 func (service *ItemMoveService) Copy(ctx context.Context, c *gin.Context) serializer.Response {
 	// 复制操作只能对一个目录或文件对象进行操作
 	if len(service.Src.Items)+len(service.Src.Dirs) > 1 {
-		return serializer.ParamErr("只能复制一个对象", nil)
+		return filesystem.ErrOneObjectOnly
 	}
 
 	// 创建文件系统
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+		return serializer.Err(serializer.CodeCreateFSError, "", err)
 	}
 	defer fs.Recycle()
 
@@ -340,13 +337,13 @@ func (service *ItemMoveService) Copy(ctx context.Context, c *gin.Context) serial
 func (service *ItemRenameService) Rename(ctx context.Context, c *gin.Context) serializer.Response {
 	// 重命名作只能对一个目录或文件对象进行操作
 	if len(service.Src.Items)+len(service.Src.Dirs) > 1 {
-		return serializer.ParamErr("只能操作一个对象", nil)
+		return filesystem.ErrOneObjectOnly
 	}
 
 	// 创建文件系统
 	fs, err := filesystem.NewFileSystemFromContext(c)
 	if err != nil {
-		return serializer.Err(serializer.CodePolicyNotAllowed, err.Error(), err)
+		return serializer.Err(serializer.CodeCreateFSError, "", err)
 	}
 	defer fs.Recycle()
 
@@ -373,12 +370,12 @@ func (service *ItemPropertyService) GetProperty(ctx context.Context, c *gin.Cont
 	if !service.IsFolder {
 		res, err := hashid.DecodeHashID(service.ID, hashid.FileID)
 		if err != nil {
-			return serializer.Err(serializer.CodeNotFound, "对象不存在", err)
+			return serializer.Err(serializer.CodeNotFound, "", err)
 		}
 
 		file, err := model.GetFilesByIDs([]uint{res}, user.ID)
 		if err != nil {
-			return serializer.DBErr("找不到文件", err)
+			return serializer.DBErr("Failed to query file records", err)
 		}
 
 		props.CreatedAt = file[0].CreatedAt
@@ -390,11 +387,11 @@ func (service *ItemPropertyService) GetProperty(ctx context.Context, c *gin.Cont
 		if service.TraceRoot {
 			parent, err := model.GetFoldersByIDs([]uint{file[0].FolderID}, user.ID)
 			if err != nil {
-				return serializer.DBErr("找不到父目录", err)
+				return serializer.DBErr("Parent folder record not exist", err)
 			}
 
 			if err := parent[0].TraceRoot(); err != nil {
-				return serializer.DBErr("无法溯源父目录", err)
+				return serializer.DBErr("Failed to trace root folder", err)
 			}
 
 			props.Path = path.Join(parent[0].Position, parent[0].Name)
@@ -402,34 +399,37 @@ func (service *ItemPropertyService) GetProperty(ctx context.Context, c *gin.Cont
 	} else {
 		res, err := hashid.DecodeHashID(service.ID, hashid.FolderID)
 		if err != nil {
-			return serializer.Err(serializer.CodeNotFound, "对象不存在", err)
-		}
-
-		// 如果对象是目录, 先尝试返回缓存结果
-		if cacheRes, ok := cache.Get(fmt.Sprintf("folder_props_%d", res)); ok {
-			return serializer.Response{Data: cacheRes.(serializer.ObjectProps)}
+			return serializer.Err(serializer.CodeNotFound, "", err)
 		}
 
 		folder, err := model.GetFoldersByIDs([]uint{res}, user.ID)
 		if err != nil {
-			return serializer.DBErr("找不到目录", err)
+			return serializer.DBErr("Failed to query folder records", err)
 		}
 
 		props.CreatedAt = folder[0].CreatedAt
 		props.UpdatedAt = folder[0].UpdatedAt
 
+		// 如果对象是目录, 先尝试返回缓存结果
+		if cacheRes, ok := cache.Get(fmt.Sprintf("folder_props_%d", res)); ok {
+			res := cacheRes.(serializer.ObjectProps)
+			res.CreatedAt = props.CreatedAt
+			res.UpdatedAt = props.UpdatedAt
+			return serializer.Response{Data: res}
+		}
+
 		// 统计子目录
 		childFolders, err := model.GetRecursiveChildFolder([]uint{folder[0].ID},
 			user.ID, true)
 		if err != nil {
-			return serializer.DBErr("无法列取子目录", err)
+			return serializer.DBErr("Failed to list child folders", err)
 		}
 		props.ChildFolderNum = len(childFolders) - 1
 
 		// 统计子文件
 		files, err := model.GetChildFilesOfFolders(&childFolders)
 		if err != nil {
-			return serializer.DBErr("无法列取子文件", err)
+			return serializer.DBErr("Failed to list child files", err)
 		}
 
 		// 统计子文件个数和大小
@@ -441,7 +441,7 @@ func (service *ItemPropertyService) GetProperty(ctx context.Context, c *gin.Cont
 		// 查找父目录
 		if service.TraceRoot {
 			if err := folder[0].TraceRoot(); err != nil {
-				return serializer.DBErr("无法溯源父目录", err)
+				return serializer.DBErr("Failed to list child folders", err)
 			}
 
 			props.Path = folder[0].Position

@@ -45,7 +45,7 @@ func (file *File) Create() error {
 	tx := DB.Begin()
 
 	if err := tx.Create(file).Error; err != nil {
-		util.Log().Warning("无法插入文件记录, %s", err)
+		util.Log().Warning("Failed to insert file record: %s", err)
 		tx.Rollback()
 		return err
 	}
@@ -104,19 +104,23 @@ func (folder *Folder) GetChildFiles() ([]File, error) {
 // GetFilesByIDs 根据文件ID批量获取文件,
 // UID为0表示忽略用户，只根据文件ID检索
 func GetFilesByIDs(ids []uint, uid uint) ([]File, error) {
+	return GetFilesByIDsFromTX(DB, ids, uid)
+}
+
+func GetFilesByIDsFromTX(tx *gorm.DB, ids []uint, uid uint) ([]File, error) {
 	var files []File
 	var result *gorm.DB
 	if uid == 0 {
-		result = DB.Where("id in (?)", ids).Find(&files)
+		result = tx.Where("id in (?)", ids).Find(&files)
 	} else {
-		result = DB.Where("id in (?) AND user_id = ?", ids, uid).Find(&files)
+		result = tx.Where("id in (?) AND user_id = ?", ids, uid).Find(&files)
 	}
 	return files, result.Error
 }
 
 // GetFilesByKeywords 根据关键字搜索文件,
-// UID为0表示忽略用户，只根据文件ID检索
-func GetFilesByKeywords(uid uint, keywords ...interface{}) ([]File, error) {
+// UID为0表示忽略用户，只根据文件ID检索. 如果 parents 非空， 则只限制在 parent 包含的目录下搜索
+func GetFilesByKeywords(uid uint, parents []uint, keywords ...interface{}) ([]File, error) {
 	var (
 		files      []File
 		result     = DB
@@ -134,6 +138,11 @@ func GetFilesByKeywords(uid uint, keywords ...interface{}) ([]File, error) {
 	if uid != 0 {
 		result = result.Where("user_id = ?", uid)
 	}
+
+	if len(parents) > 0 {
+		result = result.Where("folder_id in (?)", parents)
+	}
+
 	result = result.Where("("+conditions+")", keywords...).Find(&files)
 
 	return files, result.Error
@@ -141,7 +150,7 @@ func GetFilesByKeywords(uid uint, keywords ...interface{}) ([]File, error) {
 
 // GetChildFilesOfFolders 批量检索目录子文件
 func GetChildFilesOfFolders(folders *[]Folder) ([]File, error) {
-	// 将所有待删除目录ID抽离，以便检索文件
+	// 将所有待检索目录ID抽离，以便检索文件
 	folderIDs := make([]uint, 0, len(*folders))
 	for _, value := range *folders {
 		folderIDs = append(folderIDs, value.ID)
@@ -179,15 +188,20 @@ func RemoveFilesWithSoftLinks(files []File) ([]File, error) {
 	// 结果值
 	filteredFiles := make([]File, 0)
 
-	// 查询软链接的文件
-	var filesWithSoftLinks []File
-	tx := DB
-	for _, value := range files {
-		tx = tx.Or("source_name = ? and policy_id = ? and id != ?", value.SourceName, value.PolicyID, value.ID)
+	if len(files) == 0 {
+		return filteredFiles, nil
 	}
-	result := tx.Find(&filesWithSoftLinks)
-	if result.Error != nil {
-		return nil, result.Error
+
+	// 查询软链接的文件
+	filesWithSoftLinks := make([]File, 0)
+	for _, file := range files {
+		var softLinkFile File
+		res := DB.
+			Where("source_name = ? and policy_id = ? and id != ?", file.SourceName, file.PolicyID, file.ID).
+			First(&softLinkFile)
+		if res.Error == nil {
+			filesWithSoftLinks = append(filesWithSoftLinks, softLinkFile)
+		}
 	}
 
 	// 过滤具有软连接的文件
@@ -223,18 +237,21 @@ func DeleteFiles(files []*File, uid uint) error {
 	for _, file := range files {
 		if file.UserID != uid {
 			tx.Rollback()
-			return errors.New("User id not consistent")
+			return errors.New("user id not consistent")
 		}
 
-		result := tx.Unscoped().Delete(file)
-		if result.RowsAffected != 0 {
-			size += file.Size
-		}
-
+		result := tx.Unscoped().Where("size = ?", file.Size).Delete(file)
 		if result.Error != nil {
 			tx.Rollback()
 			return result.Error
 		}
+
+		if result.RowsAffected == 0 {
+			tx.Rollback()
+			return errors.New("file size is dirty")
+		}
+
+		size += file.Size
 	}
 
 	if err := user.ChangeStorage(tx, "-", size); err != nil {
@@ -261,7 +278,7 @@ func GetFilesByUploadSession(sessionID string, uid uint) (*File, error) {
 
 // Rename 重命名文件
 func (file *File) Rename(new string) error {
-	return DB.Model(&file).Update("name", new).Error
+	return DB.Model(&file).UpdateColumn("name", new).Error
 }
 
 // UpdatePicInfo 更新文件的图像信息
@@ -381,6 +398,25 @@ func (file *File) PopChunkToFile(lastModified *time.Time, picInfo string) error 
 // CanCopy 返回文件是否可被复制
 func (file *File) CanCopy() bool {
 	return file.UploadSessionID == nil
+}
+
+// CreateOrGetSourceLink creates a SourceLink model. If the given model exists, the existing
+// model will be returned.
+func (file *File) CreateOrGetSourceLink() (*SourceLink, error) {
+	res := &SourceLink{}
+	err := DB.Set("gorm:auto_preload", true).Where("file_id = ?", file.ID).Find(&res).Error
+	if err == nil && res.ID > 0 {
+		return res, nil
+	}
+
+	res.FileID = file.ID
+	res.Name = file.Name
+	if err := DB.Save(res).Error; err != nil {
+		return nil, fmt.Errorf("failed to insert SourceLink: %w", err)
+	}
+
+	res.File = *file
+	return res, nil
 }
 
 /*

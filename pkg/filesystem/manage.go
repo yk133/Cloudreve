@@ -73,7 +73,7 @@ func (fs *FileSystem) Copy(ctx context.Context, dirs, files []uint, src, dst str
 	if len(dirs) > 0 {
 		subFileSizes, err := srcFolder.CopyFolderTo(dirs[0], dstFolder)
 		if err != nil {
-			return serializer.NewError(serializer.CodeDBError, "操作失败，可能有重名冲突", err)
+			return ErrObjectNotExist.WithError(err)
 		}
 		newUsedStorage += subFileSizes
 	}
@@ -82,7 +82,7 @@ func (fs *FileSystem) Copy(ctx context.Context, dirs, files []uint, src, dst str
 	if len(files) > 0 {
 		subFileSizes, err := srcFolder.MoveOrCopyFileTo(files, dstFolder, true)
 		if err != nil {
-			return serializer.NewError(serializer.CodeDBError, "操作失败，可能有重名冲突", err)
+			return ErrObjectNotExist.WithError(err)
 		}
 		newUsedStorage += subFileSizes
 	}
@@ -106,13 +106,13 @@ func (fs *FileSystem) Move(ctx context.Context, dirs, files []uint, src, dst str
 	// 处理目录及子文件移动
 	err := srcFolder.MoveFolderTo(dirs, dstFolder)
 	if err != nil {
-		return serializer.NewError(serializer.CodeDBError, "操作失败，可能有重名冲突", err)
+		return ErrFileExisted.WithError(err)
 	}
 
 	// 处理文件移动
 	_, err = srcFolder.MoveOrCopyFileTo(files, dstFolder, false)
 	if err != nil {
-		return serializer.NewError(serializer.CodeDBError, "操作失败，可能有重名冲突", err)
+		return ErrFileExisted.WithError(err)
 	}
 
 	// 移动文件
@@ -206,7 +206,7 @@ func (fs *FileSystem) Delete(ctx context.Context, dirs, files []uint, force bool
 	if notDeleted := len(fs.FileTarget) - len(deletedFiles); notDeleted > 0 {
 		return serializer.NewError(
 			serializer.CodeNotFullySuccess,
-			fmt.Sprintf("有 %d 个文件未能成功删除", notDeleted),
+			fmt.Sprintf("Failed to delete %d file(s).", notDeleted),
 			nil,
 		)
 	}
@@ -334,13 +334,14 @@ func (fs *FileSystem) listObjects(ctx context.Context, parent string, files []mo
 		}
 
 		objects = append(objects, serializer.Object{
-			ID:   hashid.HashID(subFolder.ID, hashid.FolderID),
-			Name: subFolder.Name,
-			Path: processedPath,
-			Pic:  "",
-			Size: 0,
-			Type: "dir",
-			Date: subFolder.CreatedAt,
+			ID:         hashid.HashID(subFolder.ID, hashid.FolderID),
+			Name:       subFolder.Name,
+			Path:       processedPath,
+			Pic:        "",
+			Size:       0,
+			Type:       "dir",
+			Date:       subFolder.UpdatedAt,
+			CreateDate: subFolder.CreatedAt,
 		})
 	}
 
@@ -361,9 +362,10 @@ func (fs *FileSystem) listObjects(ctx context.Context, parent string, files []mo
 				Pic:           file.PicInfo,
 				Size:          file.Size,
 				Type:          "file",
-				Date:          file.CreatedAt,
+				Date:          file.UpdatedAt,
 				SourceEnabled: file.GetPolicy().IsOriginLinkEnable,
 				MD5:           file.MD5,
+				CreateDate:    file.CreatedAt,
 			}
 			if shareKey != "" {
 				newFile.Key = shareKey
@@ -375,10 +377,18 @@ func (fs *FileSystem) listObjects(ctx context.Context, parent string, files []mo
 	return objects
 }
 
-// CreateDirectory 根据给定的完整创建目录，支持递归创建
+// CreateDirectory 根据给定的完整创建目录，支持递归创建。如果目录已存在，则直接
+// 返回已存在的目录。
 func (fs *FileSystem) CreateDirectory(ctx context.Context, fullPath string) (*model.Folder, error) {
-	if fullPath == "/" || fullPath == "." || fullPath == "" {
+	if fullPath == "." || fullPath == "" {
 		return nil, ErrRootProtected
+	}
+
+	if fullPath == "/" {
+		if fs.Root != nil {
+			return fs.Root, nil
+		}
+		return fs.User.Root()
 	}
 
 	// 获取要创建目录的父路径和目录名
@@ -397,10 +407,6 @@ func (fs *FileSystem) CreateDirectory(ctx context.Context, fullPath string) (*mo
 	// 父目录是否存在
 	isExist, parent := fs.IsPathExist(base)
 	if !isExist {
-		// 递归创建父目录
-		if _, ok := ctx.Value(fsctx.IgnoreDirectoryConflictCtx).(bool); !ok {
-			ctx = context.WithValue(ctx, fsctx.IgnoreDirectoryConflictCtx, true)
-		}
 		newParent, err := fs.CreateDirectory(ctx, base)
 		if err != nil {
 			return nil, err
@@ -422,11 +428,9 @@ func (fs *FileSystem) CreateDirectory(ctx context.Context, fullPath string) (*mo
 	_, err := newFolder.Create()
 
 	if err != nil {
-		if _, ok := ctx.Value(fsctx.IgnoreDirectoryConflictCtx).(bool); !ok {
-			return nil, ErrFolderExisted
-		}
-
+		return nil, fmt.Errorf("failed to create folder: %w", err)
 	}
+
 	return &newFolder, nil
 }
 
