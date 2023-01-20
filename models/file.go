@@ -45,7 +45,7 @@ func (file *File) Create() error {
 	tx := DB.Begin()
 
 	if err := tx.Create(file).Error; err != nil {
-		util.Log().Warning("Failed to insert file record: %s", err)
+		util.Log().Warning("无法插入文件记录, %s", err)
 		tx.Rollback()
 		return err
 	}
@@ -333,6 +333,7 @@ func (file *File) UpdateMD5(md5 string) error {
 
 	return tx.Commit().Error
 }
+
 
 // GetFilesByMD5  搜索文件, UID为0表示忽略用户，只根据文件ID检索
 func (file *File) GetFilesByMD5(uid uint, md5s []string) ([]*File, error) {
